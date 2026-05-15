@@ -1,0 +1,94 @@
+/* Abadi MT is a system font; Nunito is visually similar and web-available */
+/* To use actual Abadi: install it on the host and reference via @font-face  */
+
+:root {
+  /* ── Violet Palette ──────────────────────────── */
+  --violet-50:  #f5f3ff;
+  --violet-100: #ede9fe;
+  --violet-200: #ddd6fe;
+  --violet-300: #c4b5fd;
+  --violet-400: #a78bfa;
+  --violet-500: #8b5cf6;
+  --violet-600: #7c3aed;
+  --violet-700: #6d28d9;
+  --violet-800: #5b21b6;
+  --violet-900: #4c1d95;
+
+  /* ── Semantic ────────────────────────────────── */
+  --bg:          #ffffff;
+  --bg-soft:     #f5f3ff;
+  --bg-card:     #ffffff;
+  --sidebar-bg:  #4c1d95;
+  --sidebar-txt: #ede9fe;
+  --sidebar-act: #ffffff;
+  --sidebar-act-bg: rgba(255,255,255,0.15);
+
+  --primary:     #7c3aed;
+  --primary-hover: #6d28d9;
+  --accent:      #a78bfa;
+  --border:      #ddd6fe;
+  --border-dark: #c4b5fd;
+
+  --text:        #1e1b4b;
+  --text-soft:   #4c1d95;
+  --text-muted:  #7c3aed;
+  --text-light:  #a78bfa;
+
+  /* ── Status ──────────────────────────────────── */
+  --green:   #10b981;
+  --yellow:  #f59e0b;
+  --red:     #ef4444;
+  --blue:    #3b82f6;
+
+  --bull:    #10b981;
+  --bear:    #ef4444;
+  --stable:  #10b981;
+  --cautious:#f59e0b;
+  --stressed:#ef4444;
+  --sideways:#6366f1;
+
+  /* ── Typography ──────────────────────────────── */
+  /* Abadi MT Condensed → closest Google Font is Nunito */
+  --font: 'Nunito', 'Abadi MT Condensed', 'Abadi', 'Century Gothic', sans-serif;
+
+  --radius: 14px;
+  --radius-sm: 8px;
+  --shadow: 0 2px 16px rgba(109,40,217,0.10);
+  --shadow-md: 0 4px 32px rgba(109,40,217,0.15);
+}
+
+* { margin:0; padding:0; box-sizing:border-box; }
+
+html, body, #root {
+  min-height: 100vh;
+  font-family: var(--font);
+  background: var(--bg-soft);
+  color: var(--text);
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ── Scrollbar ──────────────────────────────────── */
+::-webkit-scrollbar { width: 6px; }
+::-webkit-scrollbar-track { background: var(--violet-50); }
+::-webkit-scrollbar-thumb { background: var(--violet-300); border-radius: 3px; }
+
+/* ── Animations ─────────────────────────────────── */
+@keyframes fadeUp {
+  from { opacity:0; transform:translateY(12px); }
+  to   { opacity:1; transform:translateY(0); }
+}
+@keyframes pulse-ring {
+  0%,100% { box-shadow: 0 0 0 0 rgba(124,58,237,0.35); }
+  50%      { box-shadow: 0 0 0 8px rgba(124,58,237,0); }
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+@keyframes slideIn { from { opacity:0; transform:translateX(-16px); } to { opacity:1; transform:translateX(0); } }
+
+.animate-up    { animation: fadeUp 0.35s ease forwards; }
+.animate-slide { animation: slideIn 0.3s ease forwards; }
+.spin          { animation: spin 1s linear infinite; }
+
+/* ── Global button reset ─────────────────────────── */
+button { font-family: var(--font); cursor: pointer; }
+input, textarea { font-family: var(--font); }
+a { color: inherit; text-decoration: none; }
