@@ -15,7 +15,7 @@ python-jose[cryptography]==3.3.0
 # Cache / Queue
 redis==5.0.4
 celery==5.4.0
-redbeat==2.2.0
+celery-redbeat==2.3.2
 
 # Data / Finance
 pandas==2.2.2
