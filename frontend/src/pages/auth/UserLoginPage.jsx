@@ -28,9 +28,9 @@ export default function UserLoginPage() {
     <div style={{ minHeight:'100vh', background:'var(--bg-soft)', display:'flex' }}>
       {/* Left panel */}
       <div style={{
-        width: 480, background:'var(--sidebar-bg)', display:'flex', flexDirection:'column',
-        justifyContent:'center', alignItems:'center', padding:48,
-        background: 'linear-gradient(145deg, #4c1d95 0%, #6d28d9 50%, #7c3aed 100%)',
+       width: 480, background:'var(--sidebar-bg)', display:'flex', flexDirection:'column',
+       justifyContent:'center', alignItems:'center', padding:48,
+       background: 'linear-gradient(145deg, #4c1d95 0%, #6d28d9 50%, #7c3aed 100%)',
       }}>
         <div style={{ textAlign:'center', color:'#fff' }}>
           <div style={{
