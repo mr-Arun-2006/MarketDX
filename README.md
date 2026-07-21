@@ -188,9 +188,3 @@ This platform:
 - ✅ Structural diagnosis only
 - ✅ Transparent & explainable
 - ✅ Academically defensible
-
----
-
-*Department of Computer Science & Engineering — Project Phase I*
-*Aakash R · Arun K · Arun R · Naveenkumar S*
-*Guided by Dr. B. Sujatha M.E., PhD (Dean-Academics)*
