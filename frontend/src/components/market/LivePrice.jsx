@@ -1,12 +1,12 @@
 import { useEffect, useState } from 'react'
-import { createMarketWebSocket } from '../../utils/websocket'
+import { connectMarketWebSocket, disconnectMarketWebSocket } from '../../services/websocket'
 
 export default function LivePrice({ symbol = 'NIFTY' }) {
   const [tick, setTick] = useState(null)
   const [connected, setConnected] = useState(false)
 
   useEffect(() => {
-    const socket = createMarketWebSocket({
+    connectMarketWebSocket({
       onOpen: () => setConnected(true),
       onClose: () => setConnected(false),
       onMessage: message => {
@@ -15,7 +15,7 @@ export default function LivePrice({ symbol = 'NIFTY' }) {
         }
       },
     })
-    return () => socket.close()
+    return () => disconnectMarketWebSocket()
   }, [symbol])
 
   return (
