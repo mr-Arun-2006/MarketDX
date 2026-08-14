@@ -12,6 +12,7 @@ class Settings(BaseSettings):
 
     GEMINI_API_KEY: str = ""
     ALPHA_VANTAGE_KEY: str = ""
+    WEBHOOK_SECRET: str = ""
 
     ALLOWED_ORIGINS: List[str] = ["http://localhost", "http://localhost:3000"]
 
