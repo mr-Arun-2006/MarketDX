@@ -11,7 +11,7 @@ import sys
 
 from app.core.config import settings
 from app.core.database import engine, Base
-from app.api.v1 import auth, market, ai_chat, admin
+from app.api.v1 import auth, market, ai_chat, admin, websocket, webhooks
 
 logger.remove()
 logger.add(sys.stdout, format="{time:YYYY-MM-DD HH:mm:ss} | {level} | {message}", level="INFO")
@@ -22,7 +22,6 @@ async def lifespan(app: FastAPI):
     logger.info("🚀 MDP starting…")
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
-    # Seed default admin if none exists
     await _seed_admin()
     logger.info("✅ Ready")
     yield
@@ -60,6 +59,8 @@ app.include_router(auth.router,      prefix="/api/v1/auth",    tags=["Auth"])
 app.include_router(market.router,    prefix="/api/v1/market",  tags=["Market"])
 app.include_router(ai_chat.router,   prefix="/api/v1/ai",      tags=["AI Chat"])
 app.include_router(admin.router,     prefix="/api/v1/admin",   tags=["Admin"])
+app.include_router(websocket.router, prefix="/api/v1",         tags=["WebSocket"])
+app.include_router(webhooks.router,  prefix="/api/v1/webhooks", tags=["Webhooks"])
 
 @app.get("/health")
 async def health():
