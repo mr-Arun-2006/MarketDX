@@ -5,7 +5,7 @@ import json
 from fastapi import APIRouter, Header, HTTPException, Request
 
 from app.core.config import settings
-from app.services.websocket_manager import manager
+from app.services.market_stream import market_stream
 
 router = APIRouter()
 
@@ -35,5 +35,11 @@ async def broker_webhook(
     except json.JSONDecodeError as exc:
         raise HTTPException(status_code=400, detail="Invalid JSON payload") from exc
 
-    await manager.broadcast({"type": "broker_event", "data": payload})
+    if payload.get("symbol") is not None and payload.get("price") is not None:
+        await market_stream.publish(
+            symbol=str(payload["symbol"]),
+            price=float(payload["price"]),
+            change=float(payload.get("change", 0.0)),
+        )
+
     return {"status": "accepted"}
