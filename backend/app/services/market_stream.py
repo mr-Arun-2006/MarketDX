@@ -1,14 +1,10 @@
-import asyncio
 from datetime import datetime, timezone
 
 from app.services.websocket_manager import manager
 
 
 class MarketStream:
-    """Demo market stream used until a broker's live feed is configured."""
-
-    def __init__(self) -> None:
-        self.running = False
+    """Publish normalized market ticks from a broker adapter to clients."""
 
     async def publish(self, symbol: str, price: float, change: float = 0.0) -> None:
         await manager.broadcast({
