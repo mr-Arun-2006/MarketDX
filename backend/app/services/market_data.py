@@ -234,7 +234,8 @@ class MarketDataService:
         url = f"{self.TEJ_BASE_URL}/actions/{symbol.upper()}"
         try:
             async with httpx.AsyncClient(timeout=15.0) as client:
-                response = await client.get(url, params={"exchange": exchange})
+                # Tej's documented actions endpoint accepts only the symbol path.
+                response = await client.get(url)
                 if response.status_code >= 400:
                     raise self._provider_error(response, "TejHQ")
                 payload = response.json()
@@ -273,7 +274,10 @@ class MarketDataService:
         if exchange not in {"NSE", "BSE"}:
             raise ValueError("exchange must be NSE or BSE")
 
-        request_params = {"exchange": exchange, **(params or {})}
+        # The documented per-stock sections accept section-specific filters,
+        # but do not document an exchange query parameter. Keep it out of the
+        # upstream request to avoid relying on ignored/unsupported query fields.
+        request_params = dict(params or {})
         # Keep the cache key deterministic and avoid caching credentials.
         cache_key = (
             symbol.upper(),
