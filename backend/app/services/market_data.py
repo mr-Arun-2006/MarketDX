@@ -351,7 +351,7 @@ class MarketDataService:
                 "keyed_features": ["back-adjusted prices", "NSE delivery quantity and delivery %"],
                 "free_key_status": "configured" if bool(settings.TEJ_API_KEY) else "optional_key_required",
                 "free_key_quota": "1,000 requests/day; 300/minute",
-                "note": "OHLCV/snapshots/actions are keyless. Adjusted prices and NSE delivery require a free TejHQ API key.",
+                "note": "Keyless EOD access is not a commercial redistribution licence. Adjusted prices and NSE delivery require a free TejHQ API key; confirm permitted use with TejHQ before public deployment.",
             },
             "eod_enrichment": {
                 "provider": "BharatStock",
@@ -362,7 +362,7 @@ class MarketDataService:
                 "daily_quota": "60 requests/day on Free plan",
                 "history_limit": "Latest 1 year for time-series data; 2 years for annual financials on Free plan",
                 "features": ["financial statements", "valuation ratios", "shareholding", "corporate actions"],
-                "note": "Optional enrichment only; cache responses to protect the daily quota.",
+                "note": "Free plan is for personal/evaluation/internal non-commercial use. Public end-user display of permitted disclosures requires an active paid tier; exchange-owned OHLCV/index display needs a direct exchange licence.",
             },
             "live": {
                 "provider": "Upstox Market Quote API",
