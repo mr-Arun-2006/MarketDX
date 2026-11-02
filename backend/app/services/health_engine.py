@@ -9,7 +9,7 @@ Module 7: Regime Class.    (6-state multi-signal: Bull/Bear/Sideways/Stable/Caut
 Module 8: Regime Analysis  (Stress composite, risk flags, support/resistance)
 Module 9: XAI Explanations (per-factor natural language with actual values)
 """
-import yfinance as yf
+from app.services.market_data import market_data_service
 import numpy as np
 import pandas as pd
 from datetime import date, timedelta
@@ -62,6 +62,8 @@ class MarketFeatures:
     bse_history: List[float] = field(default_factory=list)
     vix_history: List[float] = field(default_factory=list)
     history_dates: List[str] = field(default_factory=list)
+    data_source: str = "Yahoo Finance (yfinance)"
+    data_as_of: Optional[str] = None
 
 
 @dataclass
@@ -91,8 +93,7 @@ class MarketHealthEngine:
         end    = target + timedelta(days=1)
         try:
             tickers = [NSE_TICKER, BSE_TICKER, VIX_TICKER, BANK_NIFTY_TICKER]
-            data = yf.download(tickers, start=start, end=end,
-                               progress=False, auto_adjust=True)
+            data = market_data_service.fetch_eod_history(tickers, start, end)
             if data.empty:
                 logger.warning("yfinance empty — market holiday or network issue")
                 return None
@@ -104,7 +105,8 @@ class MarketHealthEngine:
 
     # ── Module 3 ───────────────────────────────────────────────
     def _clean(self, data: pd.DataFrame) -> pd.DataFrame:
-        data = data.ffill().bfill()
+        # Forward-fill only: backward-filling can leak later observations into earlier rows.
+        data = data.ffill()
         try:
             mask = data["Close"][NSE_TICKER] > 0
             data = data[mask]
@@ -166,9 +168,12 @@ class MarketHealthEngine:
         hist_bse   = [round(v, 2) for v in closes_bse.values[-30:].tolist()] if not closes_bse.empty else []
         hist_vix   = [round(v, 2) for v in closes_vix.values[-30:].tolist()] if not closes_vix.empty else []
         hist_dates = [str(d.date()) for d in closes_nse.index[-30:]]
+        latest_index = pd.Timestamp(closes_nse.index[-1])
+        actual_data_date = latest_index.date()
+        data_as_of = latest_index.isoformat()
 
         return MarketFeatures(
-            date=target,
+            date=actual_data_date,
             nse_open=round(nse_open,2), nse_close=round(nse_close,2),
             nse_high=round(nse_high,2), nse_low=round(nse_low,2),
             nse_volume=nse_vol, nse_vix=round(vix,2),
@@ -193,6 +198,7 @@ class MarketHealthEngine:
             price_vs_sma50=round((nse_close-sma50)/max(sma50,1)*100,3) if sma50 else 0.0,
             nse_history=hist_nse, bse_history=hist_bse,
             vix_history=hist_vix, history_dates=hist_dates,
+            data_source="Yahoo Finance (yfinance)", data_as_of=data_as_of,
         )
 
     # ── Module 5 ───────────────────────────────────────────────
