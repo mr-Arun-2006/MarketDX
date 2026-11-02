@@ -290,10 +290,8 @@ class MarketDataService:
         if exchange not in {"NSE", "BSE"}:
             raise ValueError("exchange must be NSE or BSE")
 
-        # The documented per-stock sections accept section-specific filters,
-        # but do not document an exchange query parameter. Keep it out of the
-        # upstream request to avoid relying on ignored/unsupported query fields.
-        request_params = dict(params or {})
+        # BharatStock documents exchange selection on the stock sub-endpoints.
+        request_params = {"exchange": exchange, **(params or {})}
         # Keep the cache key deterministic and avoid caching credentials.
         cache_key = (
             symbol.upper(),
@@ -351,7 +349,7 @@ class MarketDataService:
                 "keyed_features": ["back-adjusted prices", "NSE delivery quantity and delivery %"],
                 "free_key_status": "configured" if bool(settings.TEJ_API_KEY) else "optional_key_required",
                 "free_key_quota": "1,000 requests/day; 300/minute",
-                "note": "Keyless EOD access is not a commercial redistribution licence. Adjusted prices and NSE delivery require a free TejHQ API key; confirm permitted use with TejHQ before public deployment.",
+                "note": "Keyless/free and Retail access are for personal use. TejHQ Pro covers commercial product use, but TejHQ states it has no NSE/BSE data licence; confirm exchange display rights separately.",
             },
             "eod_enrichment": {
                 "provider": "BharatStock",
@@ -362,7 +360,7 @@ class MarketDataService:
                 "daily_quota": "60 requests/day on Free plan",
                 "history_limit": "Latest 1 year for time-series data; 2 years for annual financials on Free plan",
                 "features": ["financial statements", "valuation ratios", "shareholding", "corporate actions"],
-                "note": "Free plan is for personal/evaluation/internal non-commercial use. Public end-user display of permitted disclosures requires an active paid tier; exchange-owned OHLCV/index display needs a direct exchange licence.",
+                "note": "Free is for personal/evaluation/internal non-commercial use. Public display of permitted filing data needs a paid tier; exchange-owned OHLCV/index display needs a direct exchange licence.",
             },
             "live": {
                 "provider": "Upstox Market Quote API",
