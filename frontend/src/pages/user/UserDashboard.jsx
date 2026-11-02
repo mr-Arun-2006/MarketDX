@@ -83,6 +83,8 @@ export default function UserDashboard() {
   const [liveQuotes, setLiveQuotes] = useState(null)
   const [stockSymbol, setStockSymbol] = useState('RELIANCE')
   const [stockExchange, setStockExchange] = useState('NSE')
+  const [stockFrom, setStockFrom] = useState('2010-01-04')
+  const [stockTo, setStockTo] = useState('')
   const [stockHistory, setStockHistory] = useState(null)
   const [stockAdjusted, setStockAdjusted] = useState(null)
   const [stockDelivery, setStockDelivery] = useState(null)
@@ -131,7 +133,7 @@ export default function UserDashboard() {
     setStockExtraError(null)
     setEnrichmentData(null)
     try {
-      const response = await marketAPI.getStockEOD(symbol, stockExchange)
+      const response = await marketAPI.getStockEOD(symbol, stockExchange, stockFrom || undefined, stockTo || undefined)
       setStockHistory(response.data)
     } catch (e) {
       setStockError(e.response?.data?.detail || e.message || 'Unable to load TejHQ EOD history')
@@ -151,8 +153,8 @@ export default function UserDashboard() {
     setStockExtraError(null)
     try {
       const response = kind === 'adjusted'
-        ? await marketAPI.getStockAdjusted(symbol, stockExchange)
-        : await marketAPI.getStockDelivery(symbol, stockExchange)
+        ? await marketAPI.getStockAdjusted(symbol, stockExchange, stockFrom || undefined, stockTo || undefined)
+        : await marketAPI.getStockDelivery(symbol, stockExchange, stockFrom || undefined, stockTo || undefined)
       if (kind === 'adjusted') setStockAdjusted(response.data)
       else setStockDelivery(response.data)
     } catch (e) {
@@ -303,7 +305,11 @@ export default function UserDashboard() {
             aria-label="Stock symbol"
             style={{ flex:'1 1 180px', minWidth:150, padding:'10px 12px', border:'1px solid var(--border)', borderRadius:8, fontSize:13, fontFamily:'var(--font)' }}
           />
-          <select value={stockExchange} onChange={e=>setStockExchange(e.target.value)} aria-label="Exchange"
+          <input type="date" value={stockFrom} onChange={e=>setStockFrom(e.target.value)} aria-label="History start date"
+            style={{ padding:'10px 12px', border:'1px solid var(--border)', borderRadius:8, fontSize:12, fontFamily:'var(--font)' }}/>
+          <input type="date" value={stockTo} onChange={e=>setStockTo(e.target.value)} aria-label="History end date"
+            style={{ padding:'10px 12px', border:'1px solid var(--border)', borderRadius:8, fontSize:12, fontFamily:'var(--font)' }}/>
+          <select value={stockExchange} onChange={e=>{setStockExchange(e.target.value);setStockFrom(e.target.value==='NSE'?'2010-01-04':'2024-07-08')}} aria-label="Exchange"
             style={{ padding:'10px 12px', border:'1px solid var(--border)', borderRadius:8, fontSize:13, fontFamily:'var(--font)', background:'#fff' }}>
             <option value="NSE">NSE</option><option value="BSE">BSE</option>
           </select>
