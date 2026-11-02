@@ -62,7 +62,7 @@ class MarketFeatures:
     bse_history: List[float] = field(default_factory=list)
     vix_history: List[float] = field(default_factory=list)
     history_dates: List[str] = field(default_factory=list)
-    data_source: str = "Yahoo Finance (yfinance)"
+    data_source: str = "Yahoo Finance (index-only fallback)"
     data_as_of: Optional[str] = None
 
 
@@ -93,7 +93,7 @@ class MarketHealthEngine:
         end    = target + timedelta(days=1)
         try:
             tickers = [NSE_TICKER, BSE_TICKER, VIX_TICKER, BANK_NIFTY_TICKER]
-            data = market_data_service.fetch_eod_history(tickers, start, end)
+            data = market_data_service.fetch_index_eod_history(tickers, start, end)
             if data.empty:
                 logger.warning("yfinance empty — market holiday or network issue")
                 return None
@@ -198,7 +198,7 @@ class MarketHealthEngine:
             price_vs_sma50=round((nse_close-sma50)/max(sma50,1)*100,3) if sma50 else 0.0,
             nse_history=hist_nse, bse_history=hist_bse,
             vix_history=hist_vix, history_dates=hist_dates,
-            data_source="Yahoo Finance (yfinance)", data_as_of=data_as_of,
+            data_source="Yahoo Finance (index-only fallback)", data_as_of=data_as_of,
         )
 
     # ── Module 5 ───────────────────────────────────────────────
