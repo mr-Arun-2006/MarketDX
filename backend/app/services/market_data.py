@@ -1,10 +1,12 @@
-"""Market data source adapters for MarketDX.
+"""Provider adapters for EOD, fundamentals enrichment and live quotes.
 
-EOD is deliberately kept separate from live quote retrieval:
-- Yahoo Finance/yfinance supplies daily historical candles for diagnosis.
-- Upstox supplies exchange-sourced quote snapshots for the live dashboard.
+TejHQ is the primary per-equity EOD source. BharatStock is an optional,
+quota-limited fundamentals/enrichment source. Upstox is the separate live
+quote source. Nifty/Sensex/VIX index diagnosis remains explicitly sourced
+from Yahoo Finance until an index EOD feed is integrated.
 """
 from datetime import datetime, timezone
+from time import monotonic
 from typing import Any
 
 import httpx
@@ -13,24 +15,27 @@ import yfinance as yf
 from app.core.config import settings
 
 
-class LiveDataNotConfigured(RuntimeError):
-    """Raised when the selected live provider has not been configured."""
+class ProviderNotConfigured(RuntimeError):
+    """The selected provider exists but its credentials/configuration are absent."""
 
 
-class LiveDataProviderError(RuntimeError):
-    """Raised when the live provider cannot return a usable response."""
+class ProviderRequestError(RuntimeError):
+    """A market data provider failed or returned an invalid response."""
 
 
 class MarketDataService:
+    TEJ_BASE_URL = "https://api.tejhq.dev/v1"
+    BHARATSTOCK_BASE_URL = "https://bharatstockapi.com/v1"
     UPSTOX_QUOTES_URL = "https://api.upstox.com/v2/market-quote/quotes"
+    BHARATSTOCK_CACHE_SECONDS = 1800
 
-    def fetch_eod_history(self, tickers: list[str], start: Any, end: Any):
-        provider = (settings.EOD_DATA_PROVIDER or "yfinance").strip().lower()
-        if provider != "yfinance":
-            raise ValueError(
-                f"Unsupported EOD_DATA_PROVIDER '{provider}'. "
-                "The configured EOD adapter currently supports 'yfinance'."
-            )
+    # Small process-local cache prevents a dashboard refresh from burning through
+    # BharatStock's 60-request free daily quota. It is not a substitute for Redis
+    # when the service runs multiple workers/replicas.
+    _bharat_cache: dict[tuple, tuple[float, Any]] = {}
+
+    def fetch_index_eod_history(self, tickers: list[str], start: Any, end: Any):
+        """Fetch index-only series that Tej's documented equity API does not expose."""
         return yf.download(
             tickers,
             start=start,
@@ -40,45 +45,207 @@ class MarketDataService:
             threads=False,
         )
 
-    def source_status(self) -> dict:
-        eod_provider = (settings.EOD_DATA_PROVIDER or "yfinance").strip().lower()
-        live_provider = (settings.LIVE_DATA_PROVIDER or "upstox").strip().lower()
-        eod_ready = eod_provider == "yfinance"
-        live_supported = live_provider == "upstox"
-        live_configured = bool(settings.UPSTOX_ACCESS_TOKEN) and live_supported
+    @staticmethod
+    def _unwrap_rows(payload: Any) -> list[dict]:
+        if isinstance(payload, list):
+            return [row for row in payload if isinstance(row, dict)]
+        if isinstance(payload, dict):
+            for key in ("data", "results", "rows", "items"):
+                value = payload.get(key)
+                if isinstance(value, list):
+                    return [row for row in value if isinstance(row, dict)]
+            # Some single-record provider endpoints return one object directly.
+            if any(key in payload for key in ("date", "trade_date", "ex_date", "as_on_date")):
+                return [payload]
+        return []
 
+    @staticmethod
+    def _provider_error(response: httpx.Response, provider: str) -> ProviderRequestError:
+        status = response.status_code
+        if status == 429:
+            return ProviderRequestError(
+                f"{provider} rate limit reached. Wait for the quota window to reset."
+            )
+        if status in (401, 403):
+            return ProviderRequestError(
+                f"{provider} rejected the API credentials or access is not permitted."
+            )
+        if status == 404:
+            return ProviderRequestError(f"{provider} has no data for this symbol or endpoint.")
+        return ProviderRequestError(f"{provider} request failed with HTTP {status}.")
+
+    async def fetch_tej_eod(
+        self,
+        symbol: str,
+        exchange: str = "NSE",
+        from_date: str | None = None,
+        to_date: str | None = None,
+    ) -> dict:
+        exchange = exchange.upper()
+        if exchange not in {"NSE", "BSE"}:
+            raise ValueError("exchange must be NSE or BSE")
+
+        params = {}
+        if from_date:
+            params["from"] = from_date
+        if to_date:
+            params["to"] = to_date
+
+        url = f"{self.TEJ_BASE_URL}/ohlcv/{exchange.lower()}/{symbol.upper()}"
+        try:
+            async with httpx.AsyncClient(timeout=20.0) as client:
+                response = await client.get(url, params=params)
+                if response.status_code >= 400:
+                    raise self._provider_error(response, "TejHQ")
+                payload = response.json()
+        except httpx.RequestError as exc:
+            raise ProviderRequestError("Could not connect to TejHQ EOD API.") from exc
+        except ValueError as exc:
+            raise ProviderRequestError("TejHQ returned invalid JSON.") from exc
+
+        rows = self._unwrap_rows(payload)
+        if not rows:
+            raise ProviderRequestError("TejHQ returned no EOD rows for the requested symbol.")
+        dates = [str(row.get("date") or row.get("trade_date") or "") for row in rows]
+        valid_dates = [value for value in dates if value]
         return {
-            "primary": {
-                "mode": "EOD",
-                "provider": "Yahoo Finance (yfinance)" if eod_provider == "yfinance" else eod_provider,
-                "provider_id": eod_provider,
-                "role": "Primary source for historical daily candles and market diagnosis",
-                "status": "ready" if eod_ready else "unsupported",
-                "configured": eod_ready,
+            "mode": "EOD",
+            "provider": "TejHQ / Tej Bazaar",
+            "exchange": exchange,
+            "symbol": symbol.upper(),
+            "is_live": False,
+            "as_of": max(valid_dates) if valid_dates else None,
+            "count": len(rows),
+            "data": rows,
+            "source_url": url,
+            "notice": "Daily end-of-day candles; not an intraday/live feed.",
+        }
+
+    async def fetch_tej_actions(self, symbol: str, exchange: str = "NSE") -> dict:
+        exchange = exchange.upper()
+        if exchange not in {"NSE", "BSE"}:
+            raise ValueError("exchange must be NSE or BSE")
+        url = f"{self.TEJ_BASE_URL}/actions/{symbol.upper()}"
+        try:
+            async with httpx.AsyncClient(timeout=15.0) as client:
+                response = await client.get(url, params={"exchange": exchange})
+                if response.status_code >= 400:
+                    raise self._provider_error(response, "TejHQ")
+                payload = response.json()
+        except httpx.RequestError as exc:
+            raise ProviderRequestError("Could not connect to TejHQ corporate-actions API.") from exc
+        except ValueError as exc:
+            raise ProviderRequestError("TejHQ returned invalid corporate-actions JSON.") from exc
+
+        rows = self._unwrap_rows(payload)
+        return {
+            "provider": "TejHQ / Tej Bazaar",
+            "exchange": exchange,
+            "symbol": symbol.upper(),
+            "count": len(rows),
+            "data": rows if rows else payload,
+        }
+
+    async def fetch_bharatstock_data(
+        self,
+        symbol: str,
+        section: str,
+        exchange: str = "NSE",
+        params: dict | None = None,
+    ) -> dict:
+        allowed = {"financials", "ratios", "shareholding", "corporate-actions"}
+        if section not in allowed:
+            raise ValueError(f"section must be one of: {', '.join(sorted(allowed))}")
+
+        api_key = settings.BHARATSTOCK_API_KEY.strip()
+        if not api_key:
+            raise ProviderNotConfigured(
+                "BharatStock is not configured. Add BHARATSTOCK_API_KEY to the backend environment."
+            )
+
+        exchange = exchange.upper()
+        if exchange not in {"NSE", "BSE"}:
+            raise ValueError("exchange must be NSE or BSE")
+
+        request_params = {"exchange": exchange, **(params or {})}
+        # Keep the cache key deterministic and avoid caching credentials.
+        cache_key = (
+            symbol.upper(),
+            section,
+            exchange,
+            tuple(sorted((str(k), str(v)) for k, v in request_params.items())),
+        )
+        cached = self._bharat_cache.get(cache_key)
+        now = monotonic()
+        if cached and now - cached[0] < self.BHARATSTOCK_CACHE_SECONDS:
+            return {**cached[1], "cache": "hit"}
+
+        url = f"{self.BHARATSTOCK_BASE_URL}/stocks/{symbol.upper()}/{section}"
+        try:
+            async with httpx.AsyncClient(timeout=15.0) as client:
+                response = await client.get(
+                    url,
+                    headers={"X-API-Key": api_key, "Accept": "application/json"},
+                    params=request_params,
+                )
+                if response.status_code >= 400:
+                    raise self._provider_error(response, "BharatStock")
+                payload = response.json()
+        except httpx.RequestError as exc:
+            raise ProviderRequestError("Could not connect to BharatStock API.") from exc
+        except ValueError as exc:
+            raise ProviderRequestError("BharatStock returned invalid JSON.") from exc
+
+        result = {
+            "provider": "BharatStock",
+            "section": section,
+            "exchange": exchange,
+            "symbol": symbol.upper(),
+            "history_limit": "Free plan: latest 1 year for time-series data; 2 years for annual financials",
+            "data": payload,
+            "cache": "miss",
+        }
+        self._bharat_cache[cache_key] = (now, result)
+        return result
+
+    def source_status(self) -> dict:
+        return {
+            "primary_eod": {
+                "provider": "TejHQ / Tej Bazaar",
+                "provider_id": "tej",
+                "status": "ready",
+                "configured": True,
                 "is_live": False,
-                "freshness": "End-of-day; latest completed daily candle",
-                "note": (
-                    "Third-party public data source. Validate important values against "
-                    "your exchange-authorized data provider."
-                ),
+                "coverage": {"NSE": "2010 onwards", "BSE": "2024-07 onwards"},
+                "features": ["daily OHLCV", "corporate actions", "adjusted prices", "NSE delivery data"],
+                "note": "Free keyless EOD API. Equity history; publication follows the exchange session.",
             },
-            "secondary": {
-                "mode": "LIVE",
-                "provider": "Upstox Market Quote API" if live_supported else live_provider,
-                "provider_id": live_provider,
-                "role": "Secondary source for current-session dashboard quotes",
-                "status": (
-                    "ready" if live_configured
-                    else "needs_credentials" if live_supported
-                    else "unsupported"
-                ),
-                "configured": live_configured,
+            "eod_enrichment": {
+                "provider": "BharatStock",
+                "provider_id": "bharatstock",
+                "status": "ready" if bool(settings.BHARATSTOCK_API_KEY) else "needs_api_key",
+                "configured": bool(settings.BHARATSTOCK_API_KEY),
+                "is_live": False,
+                "daily_quota": "60 requests/day on Free plan",
+                "history_limit": "Latest 1 year for time-series data; 2 years for annual financials on Free plan",
+                "features": ["financial statements", "valuation ratios", "shareholding", "corporate actions"],
+                "note": "Optional enrichment only; cache responses to protect the daily quota.",
+            },
+            "live": {
+                "provider": "Upstox Market Quote API",
+                "provider_id": "upstox",
+                "status": "ready" if bool(settings.UPSTOX_ACCESS_TOKEN) else "needs_credentials",
+                "configured": bool(settings.UPSTOX_ACCESS_TOKEN),
                 "is_live": True,
-                "transport": "REST quote snapshots; dashboard polls every 15 seconds",
-                "note": (
-                    "Requires an Upstox API access/analytics token. The server keeps the "
-                    "token private and never sends it to the browser."
-                ),
+                "transport": "REST quote snapshots; dashboard polling",
+                "note": "Requires an Upstox access token. Separate from EOD analysis.",
+            },
+            "index_diagnosis": {
+                "provider": "Yahoo Finance (yfinance)",
+                "status": "fallback",
+                "configured": True,
+                "is_live": False,
+                "note": "Temporary index-only fallback for Nifty, Sensex, India VIX and Bank Nifty. Tej's documented OHLCV API is equity-symbol based.",
             },
         }
 
@@ -136,13 +303,13 @@ class MarketDataService:
     async def fetch_live_quotes(self) -> dict:
         provider = (settings.LIVE_DATA_PROVIDER or "upstox").strip().lower()
         if provider != "upstox":
-            raise LiveDataNotConfigured(
+            raise ProviderNotConfigured(
                 f"Unsupported LIVE_DATA_PROVIDER '{provider}'. Configure 'upstox'."
             )
 
         token = settings.UPSTOX_ACCESS_TOKEN.strip()
         if not token:
-            raise LiveDataNotConfigured(
+            raise ProviderNotConfigured(
                 "Live quotes are not configured. Add UPSTOX_ACCESS_TOKEN to the backend "
                 "environment and restart the API."
             )
@@ -153,44 +320,26 @@ class MarketDataService:
             if item.strip()
         ]
         if not instrument_keys:
-            raise LiveDataNotConfigured(
+            raise ProviderNotConfigured(
                 "No Upstox instruments configured. Set UPSTOX_INSTRUMENT_KEYS."
             )
 
-        headers = {
-            "Accept": "application/json",
-            "Authorization": f"Bearer {token}",
-        }
+        headers = {"Accept": "application/json", "Authorization": f"Bearer {token}"}
         params = {"instrument_key": ",".join(instrument_keys)}
-
         try:
             async with httpx.AsyncClient(timeout=10.0) as client:
-                response = await client.get(
-                    self.UPSTOX_QUOTES_URL,
-                    headers=headers,
-                    params=params,
-                )
-                response.raise_for_status()
+                response = await client.get(self.UPSTOX_QUOTES_URL, headers=headers, params=params)
+                if response.status_code >= 400:
+                    raise self._provider_error(response, "Upstox")
                 payload = response.json()
-        except httpx.HTTPStatusError as exc:
-            status_code = exc.response.status_code
-            if status_code in (401, 403):
-                message = "Upstox rejected the token. Generate or refresh the API token."
-            elif status_code == 429:
-                message = "Upstox rate limit reached. Reduce quote polling frequency."
-            else:
-                message = f"Upstox quote request failed with HTTP {status_code}."
-            raise LiveDataProviderError(message) from exc
-        except (httpx.RequestError, ValueError) as exc:
-            raise LiveDataProviderError(
-                "Could not connect to Upstox or parse its quote response."
-            ) from exc
+        except httpx.RequestError as exc:
+            raise ProviderRequestError("Could not connect to Upstox quote API.") from exc
+        except ValueError as exc:
+            raise ProviderRequestError("Upstox returned invalid quote JSON.") from exc
 
         raw_quotes = payload.get("data") or {}
         if not isinstance(raw_quotes, dict) or not raw_quotes:
-            raise LiveDataProviderError(
-                "Upstox returned no quotes for the configured instrument keys."
-            )
+            raise ProviderRequestError("Upstox returned no quotes for the configured instruments.")
 
         quotes = [
             self.normalize_upstox_quote(key, quote)
