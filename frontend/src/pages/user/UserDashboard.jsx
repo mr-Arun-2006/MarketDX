@@ -84,6 +84,10 @@ export default function UserDashboard() {
   const [stockSymbol, setStockSymbol] = useState('RELIANCE')
   const [stockExchange, setStockExchange] = useState('NSE')
   const [stockHistory, setStockHistory] = useState(null)
+  const [stockAdjusted, setStockAdjusted] = useState(null)
+  const [stockDelivery, setStockDelivery] = useState(null)
+  const [stockExtraLoading, setStockExtraLoading] = useState(false)
+  const [stockExtraError, setStockExtraError] = useState(null)
   const [stockLoading, setStockLoading] = useState(false)
   const [stockError, setStockError] = useState(null)
   const [enrichmentSection, setEnrichmentSection] = useState('financials')
@@ -122,6 +126,9 @@ export default function UserDashboard() {
     setStockLoading(true)
     setStockError(null)
     setStockHistory(null)
+    setStockAdjusted(null)
+    setStockDelivery(null)
+    setStockExtraError(null)
     setEnrichmentData(null)
     try {
       const response = await marketAPI.getStockEOD(symbol, stockExchange)
@@ -130,6 +137,28 @@ export default function UserDashboard() {
       setStockError(e.response?.data?.detail || e.message || 'Unable to load TejHQ EOD history')
     } finally {
       setStockLoading(false)
+    }
+  }
+
+  const loadTejExtra = async (kind) => {
+    const symbol = stockSymbol.trim().toUpperCase()
+    if (!symbol) return
+    if (kind === 'delivery' && stockExchange !== 'NSE') {
+      setStockExtraError('TejHQ delivery history is available for NSE only.')
+      return
+    }
+    setStockExtraLoading(true)
+    setStockExtraError(null)
+    try {
+      const response = kind === 'adjusted'
+        ? await marketAPI.getStockAdjusted(symbol, stockExchange)
+        : await marketAPI.getStockDelivery(symbol, stockExchange)
+      if (kind === 'adjusted') setStockAdjusted(response.data)
+      else setStockDelivery(response.data)
+    } catch (e) {
+      setStockExtraError(e.response?.data?.detail || e.message || `Unable to load TejHQ ${kind} data`)
+    } finally {
+      setStockExtraLoading(false)
     }
   }
 
@@ -305,6 +334,32 @@ export default function UserDashboard() {
               </table>
             </div>
             <div style={{ fontSize:10, color:'var(--text-muted)', marginTop:8 }}>{stockHistory.notice}</div>
+          </div>
+        )}
+        <div style={{ display:'flex', flexWrap:'wrap', gap:8, alignItems:'center', marginTop:12 }}>
+          <button type="button" onClick={()=>loadTejExtra('adjusted')} disabled={stockExtraLoading || !stockHistory || !sources?.primary_eod?.free_key_status || sources.primary_eod.free_key_status!=='configured'}
+            style={{ padding:'8px 12px', border:'1px solid var(--border)', borderRadius:8, background:'#fff', color:'var(--text)', fontSize:12, fontWeight:700, cursor:'pointer', opacity:sources?.primary_eod?.free_key_status==='configured'?1:0.55 }}>
+            {stockExtraLoading ? 'Loading…' : 'Load adjusted prices'}
+          </button>
+          <button type="button" onClick={()=>loadTejExtra('delivery')} disabled={stockExtraLoading || !stockHistory || stockExchange!=='NSE' || sources?.primary_eod?.free_key_status!=='configured'}
+            style={{ padding:'8px 12px', border:'1px solid var(--border)', borderRadius:8, background:'#fff', color:'var(--text)', fontSize:12, fontWeight:700, cursor:'pointer', opacity:sources?.primary_eod?.free_key_status==='configured' && stockExchange==='NSE'?1:0.55 }}>
+            {stockExtraLoading ? 'Loading…' : 'Load NSE delivery'}
+          </button>
+          {sources?.primary_eod?.free_key_status!=='configured' && <span style={{ fontSize:11, color:'var(--text-muted)' }}>Set TEJ_API_KEY to unlock adjusted prices and delivery (free key · 1,000 requests/day).</span>}
+        </div>
+        {stockExtraError && <div style={{ color:'#b91c1c', fontSize:12, marginTop:8 }}>{stockExtraError}</div>}
+        {(stockAdjusted || stockDelivery) && (
+          <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit,minmax(230px,1fr))', gap:10, marginTop:12 }}>
+            {stockAdjusted && <div style={{ padding:12, border:'1px solid var(--border)', borderRadius:8, background:'var(--violet-50)' }}>
+              <div style={{ fontSize:11, fontWeight:800, marginBottom:6 }}>BACK-ADJUSTED PRICES</div>
+              <div style={{ fontSize:11, color:'var(--text-muted)', marginBottom:8 }}>{stockAdjusted.count} rows · {stockAdjusted.provider}</div>
+              <pre style={{ whiteSpace:'pre-wrap', overflowX:'auto', maxHeight:170, fontSize:10 }}>{JSON.stringify(stockAdjusted.data?.slice?.(-3) || stockAdjusted.data,null,2)}</pre>
+            </div>}
+            {stockDelivery && <div style={{ padding:12, border:'1px solid var(--border)', borderRadius:8, background:'var(--violet-50)' }}>
+              <div style={{ fontSize:11, fontWeight:800, marginBottom:6 }}>NSE DELIVERY HISTORY</div>
+              <div style={{ fontSize:11, color:'var(--text-muted)', marginBottom:8 }}>{stockDelivery.count} rows · {stockDelivery.provider}</div>
+              <pre style={{ whiteSpace:'pre-wrap', overflowX:'auto', maxHeight:170, fontSize:10 }}>{JSON.stringify(stockDelivery.data?.slice?.(-3) || stockDelivery.data,null,2)}</pre>
+            </div>}
           </div>
         )}
         <div style={{ display:'flex', flexWrap:'wrap', gap:8, alignItems:'center', marginTop:16, paddingTop:14, borderTop:'1px solid var(--border)' }}>
