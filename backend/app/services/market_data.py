@@ -245,12 +245,17 @@ class MarketDataService:
             raise ProviderRequestError("TejHQ returned invalid corporate-actions JSON.") from exc
 
         rows = self._unwrap_rows(payload)
+        # The keyless actions API returns exchange as a row field, not a query filter.
+        rows = [
+            row for row in rows
+            if str(row.get("exchange", "")).upper() == exchange
+        ]
         return {
             "provider": "TejHQ / Tej Bazaar",
             "exchange": exchange,
             "symbol": symbol.upper(),
             "count": len(rows),
-            "data": rows if rows else payload,
+            "data": rows,
         }
 
     async def fetch_bharatstock_data(
