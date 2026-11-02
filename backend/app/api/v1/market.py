@@ -309,6 +309,14 @@ async def get_stock_enrichment(
     user: User = Depends(get_current_user),
 ):
     """Fetch one enrichment section per request to respect BharatStock's free quota."""
+    # BharatStock documents exchange disambiguation on its stock-detail endpoint,
+    # but not on these individual section routes. Reject BSE here rather than
+    # silently returning the default NSE listing for an ambiguous symbol.
+    if exchange != "NSE":
+        raise HTTPException(
+            status_code=422,
+            detail="BharatStock section endpoints do not document an exchange selector. Use an NSE ticker for this enrichment route; BSE-only enrichment is not enabled until the provider confirms its parameter contract.",
+        )
     params = {}
     if section == "financials":
         params.update({"period_type": period_type, "page": page, "page_size": page_size})
