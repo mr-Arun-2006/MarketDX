@@ -32,11 +32,13 @@ class MarketDataService:
     BHARATSTOCK_BASE_URL = "https://bharatstockapi.com/v1"
     UPSTOX_QUOTES_URL = "https://api.upstox.com/v2/market-quote/quotes"
     BHARATSTOCK_CACHE_SECONDS = 1800
+    SNAPSHOT_CACHE_SECONDS = 21600
 
     # Small process-local cache prevents a dashboard refresh from burning through
     # BharatStock's 60-request free daily quota. It is not a substitute for Redis
     # when the service runs multiple workers/replicas.
     _bharat_cache: dict[tuple, tuple[float, Any]] = {}
+    _snapshot_cache: dict[tuple, tuple[float, list[dict]]] = {}
 
     def fetch_index_eod_history(self, tickers: list[str], start: Any, end: Any):
         """Fetch index-only series that Tej's documented equity API does not expose."""
@@ -126,6 +128,104 @@ class MarketDataService:
             "source_url": url,
             "notice": "Daily end-of-day candles; not an intraday/live feed.",
         }
+
+
+    def fetch_tej_snapshot(self, exchange: str, trading_date: str) -> list[dict]:
+        """Fetch a real full-market EOD snapshot for actual advances/declines."""
+        exchange = exchange.lower()
+        if exchange not in {"nse", "bse"}:
+            raise ValueError("exchange must be NSE or BSE")
+        cache_key = (exchange, trading_date)
+        now = monotonic()
+        cached = self._snapshot_cache.get(cache_key)
+        if cached and now - cached[0] < self.SNAPSHOT_CACHE_SECONDS:
+            return cached[1]
+
+        url = f"{self.TEJ_BASE_URL}/snapshot/{exchange}"
+        try:
+            with httpx.Client(timeout=25.0) as client:
+                response = client.get(url, params={"date": trading_date})
+                if response.status_code >= 400:
+                    raise self._provider_error(response, "TejHQ")
+                payload = response.json()
+        except httpx.RequestError as exc:
+            raise ProviderRequestError("Could not connect to TejHQ market snapshot API.") from exc
+        except ValueError as exc:
+            raise ProviderRequestError("TejHQ returned invalid market snapshot JSON.") from exc
+
+        rows = self._unwrap_rows(payload)
+        if len(self._snapshot_cache) >= 8:
+            self._snapshot_cache.pop(next(iter(self._snapshot_cache)))
+        self._snapshot_cache[cache_key] = (now, rows)
+        return rows
+
+    async def _fetch_tej_keyed_rows(
+        self,
+        section: str,
+        symbol: str,
+        exchange: str,
+        from_date: str | None = None,
+        to_date: str | None = None,
+    ) -> dict:
+        api_key = settings.TEJ_API_KEY.strip()
+        if not api_key:
+            raise ProviderNotConfigured(
+                "TejHQ adjusted/delivery data needs a free API key. Add TEJ_API_KEY to the backend environment."
+            )
+        exchange = exchange.upper()
+        if exchange not in {"NSE", "BSE"}:
+            raise ValueError("exchange must be NSE or BSE")
+        if section == "delivery" and exchange != "NSE":
+            raise ValueError("TejHQ delivery data is available for NSE only.")
+
+        params = {}
+        if from_date:
+            params["from"] = from_date
+        if to_date:
+            params["to"] = to_date
+        url = f"{self.TEJ_BASE_URL}/{section}/{exchange.lower()}/{symbol.upper()}"
+        try:
+            async with httpx.AsyncClient(timeout=20.0) as client:
+                response = await client.get(
+                    url,
+                    headers={"Authorization": f"Bearer {api_key}"},
+                    params=params,
+                )
+                if response.status_code >= 400:
+                    raise self._provider_error(response, "TejHQ")
+                payload = response.json()
+        except httpx.RequestError as exc:
+            raise ProviderRequestError(f"Could not connect to TejHQ {section} API.") from exc
+        except ValueError as exc:
+            raise ProviderRequestError(f"TejHQ returned invalid {section} JSON.") from exc
+
+        rows = self._unwrap_rows(payload)
+        if not rows:
+            raise ProviderRequestError(f"TejHQ returned no {section} rows for {symbol}.", 404)
+        dates = [str(row.get("date") or "") for row in rows if row.get("date")]
+        return {
+            "provider": "TejHQ / Tej Bazaar",
+            "dataset": section,
+            "exchange": exchange,
+            "symbol": symbol.upper(),
+            "is_live": False,
+            "as_of": max(dates) if dates else None,
+            "count": len(rows),
+            "data": rows,
+            "notice": "Historical end-of-day data; this endpoint is not a live feed.",
+        }
+
+    async def fetch_tej_adjusted(
+        self, symbol: str, exchange: str = "NSE",
+        from_date: str | None = None, to_date: str | None = None,
+    ) -> dict:
+        return await self._fetch_tej_keyed_rows("adjusted", symbol, exchange, from_date, to_date)
+
+    async def fetch_tej_delivery(
+        self, symbol: str, exchange: str = "NSE",
+        from_date: str | None = None, to_date: str | None = None,
+    ) -> dict:
+        return await self._fetch_tej_keyed_rows("delivery", symbol, exchange, from_date, to_date)
 
     async def fetch_tej_actions(self, symbol: str, exchange: str = "NSE") -> dict:
         exchange = exchange.upper()
@@ -227,8 +327,11 @@ class MarketDataService:
                 "configured": True,
                 "is_live": False,
                 "coverage": {"NSE": "2010 onwards", "BSE": "2024-07 onwards"},
-                "features": ["daily OHLCV", "corporate actions", "adjusted prices", "NSE delivery data"],
-                "note": "Free keyless EOD API. Equity history; publication follows the exchange session.",
+                "features": ["daily OHLCV", "full-market snapshots", "corporate actions"],
+                "keyed_features": ["back-adjusted prices", "NSE delivery quantity and delivery %"],
+                "free_key_status": "configured" if bool(settings.TEJ_API_KEY) else "optional_key_required",
+                "free_key_quota": "1,000 requests/day; 300/minute",
+                "note": "OHLCV/snapshots/actions are keyless. Adjusted prices and NSE delivery require a free TejHQ API key.",
             },
             "eod_enrichment": {
                 "provider": "BharatStock",
