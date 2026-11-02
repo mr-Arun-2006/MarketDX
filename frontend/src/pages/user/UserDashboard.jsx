@@ -377,12 +377,11 @@ export default function UserDashboard() {
             <option value="shareholding">Shareholding</option>
             <option value="corporate-actions">Corporate actions</option>
           </select>
-          <button type="button" onClick={loadEnrichment} disabled={enrichmentLoading || !sources?.eod_enrichment?.configured || stockExchange!=='NSE'}
-            style={{ padding:'9px 13px', border:'1px solid var(--border)', borderRadius:8, background:'#fff', color:'var(--text)', fontWeight:700, cursor:'pointer', fontFamily:'var(--font)', opacity:sources?.eod_enrichment?.configured && stockExchange==='NSE'?1:0.55 }}>
+          <button type="button" onClick={loadEnrichment} disabled={enrichmentLoading || !sources?.eod_enrichment?.configured}
+            style={{ padding:'9px 13px', border:'1px solid var(--border)', borderRadius:8, background:'#fff', color:'var(--text)', fontWeight:700, cursor:'pointer', fontFamily:'var(--font)', opacity:sources?.eod_enrichment?.configured?1:0.55 }}>
             {enrichmentLoading ? 'Loading…' : 'Load enrichment'}
           </button>
           {!sources?.eod_enrichment?.configured && <span style={{ fontSize:11, color:'var(--text-muted)' }}>Set BHARATSTOCK_API_KEY in backend environment to enable (60 requests/day on Free).</span>}
-          {stockExchange==='BSE' && <span style={{ fontSize:11, color:'var(--text-muted)' }}>BharatStock's section endpoints do not document an exchange override; enrichment is restricted to NSE in this version.</span>}
         </div>
         {enrichmentError && <div style={{ color:'#b91c1c', fontSize:12, marginTop:8 }}>{enrichmentError}</div>}
         {enrichmentData && <pre style={{ whiteSpace:'pre-wrap', overflowX:'auto', maxHeight:260, padding:12, marginTop:10, background:'var(--violet-50)', borderRadius:8, fontSize:11, color:'var(--text)' }}>{JSON.stringify(enrichmentData.data,null,2)}</pre>}
