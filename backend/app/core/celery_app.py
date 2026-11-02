@@ -11,9 +11,9 @@ celery_app.conf.update(
     beat_schedule={
         "fetch-eod-daily": {
             "task": "app.services.tasks.fetch_and_score",
-            # TejHQ publishes its refreshed EOD data around 18:30 IST.
-            # Run at 19:00 IST on weekdays to avoid fetching before publication.
-            "schedule": crontab(minute=0, hour=19, day_of_week="mon-fri"),
+            # TejHQ's primary run starts around 18:30 IST and retries at 21:30.
+            # Run at 22:00 IST to collect after the retry window.
+            "schedule": crontab(minute=0, hour=22, day_of_week="mon-fri"),
         },
     },
 )
