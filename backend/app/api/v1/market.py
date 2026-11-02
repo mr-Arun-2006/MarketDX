@@ -185,13 +185,6 @@ async def trigger_fetch(user: User = Depends(get_current_user)):
     return {"status": "queued", "message": "EOD fetch triggered in background"}
 
 
-# ── Data source configuration ─────────────────────────────────
-@router.get("/sources")
-async def get_data_sources(user: User = Depends(get_current_user)):
-    """Return non-secret configuration and readiness for the EOD/live providers."""
-    return market_data_service.source_status()
-
-
 # ── Secondary live quote source ───────────────────────────────
 @router.get("/live/quotes")
 async def get_live_quotes(user: User = Depends(get_current_user)):
@@ -201,7 +194,7 @@ async def get_live_quotes(user: User = Depends(get_current_user)):
     except ProviderNotConfigured as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
     except ProviderRequestError as exc:
-        raise HTTPException(status_code=502, detail=str(exc)) from exc
+        raise HTTPException(status_code=exc.status_code, detail=str(exc)) from exc
 
 
 # ── Provider inventory ────────────────────────────────────────
@@ -283,5 +276,4 @@ async def get_stock_enrichment(
     except ProviderNotConfigured as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
     except ProviderRequestError as exc:
-        status = 429 if "rate limit" in str(exc).lower() else 502
-        raise HTTPException(status_code=status, detail=str(exc)) from exc
+        raise HTTPException(status_code=exc.status_code, detail=str(exc)) from exc
