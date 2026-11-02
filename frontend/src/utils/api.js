@@ -36,6 +36,20 @@ export const marketAPI = {
   getChart:      () => API.get('/api/v1/market/chart'),
   getIndicators: () => API.get('/api/v1/market/indicators'),
   getSummary:    () => API.get('/api/v1/market/summary'),
+  getSources:    () => API.get('/api/v1/market/sources'),
+  getLiveQuotes: () => API.get('/api/v1/market/live/quotes'),
+  getStockEOD:   (symbol, exchange = 'NSE', from, to) => API.get(
+    `/api/v1/market/stocks/${encodeURIComponent(symbol)}/eod`,
+    { params: { exchange, ...(from ? { from } : {}), ...(to ? { to } : {}) } }
+  ),
+  getStockActions: (symbol, exchange = 'NSE') => API.get(
+    `/api/v1/market/stocks/${encodeURIComponent(symbol)}/corporate-actions`,
+    { params: { exchange } }
+  ),
+  getStockEnrichment: (symbol, section, exchange = 'NSE', options = {}) => API.get(
+    `/api/v1/market/stocks/${encodeURIComponent(symbol)}/enrichment/${encodeURIComponent(section)}`,
+    { params: { exchange, ...options } }
+  ),
 }
 
 export const aiAPI = {
