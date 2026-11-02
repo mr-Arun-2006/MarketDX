@@ -8,6 +8,9 @@ GET /api/v1/market/summary       → lightweight summary card
 POST /api/v1/market/fetch        → manual trigger
 """
 from fastapi import APIRouter, HTTPException, Depends
+from app.services.market_data import (
+    market_data_service, LiveDataNotConfigured, LiveDataProviderError,
+)
 from app.services.health_engine import MarketHealthEngine
 from app.services.ai_service import ai_service
 from app.core.deps import get_current_user
@@ -32,6 +35,11 @@ async def get_eod(user: User = Depends(get_current_user)):
     ex = _engine.compare_exchanges(f)
     return {
         "date": f.date.isoformat(),
+        "data_source": {
+            "mode": "EOD", "provider": f.data_source,
+            "as_of": f.data_as_of or f.date.isoformat(),
+            "is_live": False, "purpose": "Primary source for market diagnosis",
+        },
         "nse": {
             "nifty_open": f.nse_open, "nifty_close": f.nse_close,
             "nifty_high": f.nse_high, "nifty_low": f.nse_low,
@@ -153,6 +161,10 @@ async def get_summary(user: User = Depends(get_current_user)):
     r = _engine.score(f)
     return {
         "date": f.date.isoformat(),
+        "data_source": {
+            "mode": "EOD", "provider": f.data_source,
+            "as_of": f.data_as_of or f.date.isoformat(), "is_live": False,
+        },
         "nifty_close": f.nse_close,
         "nse_return": f.nse_return,
         "vix": f.nse_vix,
@@ -170,3 +182,22 @@ async def trigger_fetch(user: User = Depends(get_current_user)):
     from app.services.tasks import fetch_and_score
     fetch_and_score.delay()
     return {"status": "queued", "message": "EOD fetch triggered in background"}
+
+
+# ── Data source configuration ─────────────────────────────────
+@router.get("/sources")
+async def get_data_sources(user: User = Depends(get_current_user)):
+    """Return non-secret configuration and readiness for the EOD/live providers."""
+    return market_data_service.source_status()
+
+
+# ── Secondary live quote source ───────────────────────────────
+@router.get("/live/quotes")
+async def get_live_quotes(user: User = Depends(get_current_user)):
+    """Return current-session quote snapshots from the configured broker API."""
+    try:
+        return await market_data_service.fetch_live_quotes()
+    except LiveDataNotConfigured as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    except LiveDataProviderError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
