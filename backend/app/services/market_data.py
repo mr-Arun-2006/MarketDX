@@ -40,6 +40,14 @@ class MarketDataService:
     _bharat_cache: dict[tuple, tuple[float, Any]] = {}
     _snapshot_cache: dict[tuple, tuple[float, list[dict]]] = {}
 
+    @staticmethod
+    def _ensure_tej_eod_selected() -> None:
+        provider = (settings.EOD_DATA_PROVIDER or "tej").strip().lower()
+        if provider != "tej":
+            raise ProviderNotConfigured(
+                f"Unsupported EOD_DATA_PROVIDER '{provider}'. This build supports 'tej'."
+            )
+
     def fetch_index_eod_history(self, tickers: list[str], start: Any, end: Any):
         """Fetch index-only series that Tej's documented equity API does not expose."""
         return yf.download(
@@ -89,6 +97,7 @@ class MarketDataService:
         from_date: str | None = None,
         to_date: str | None = None,
     ) -> dict:
+        self._ensure_tej_eod_selected()
         exchange = exchange.upper()
         if exchange not in {"NSE", "BSE"}:
             raise ValueError("exchange must be NSE or BSE")
@@ -132,6 +141,7 @@ class MarketDataService:
 
     def fetch_tej_snapshot(self, exchange: str, trading_date: str) -> list[dict]:
         """Fetch a real full-market EOD snapshot for actual advances/declines."""
+        self._ensure_tej_eod_selected()
         exchange = exchange.lower()
         if exchange not in {"nse", "bse"}:
             raise ValueError("exchange must be NSE or BSE")
@@ -228,6 +238,7 @@ class MarketDataService:
         return await self._fetch_tej_keyed_rows("delivery", symbol, exchange, from_date, to_date)
 
     async def fetch_tej_actions(self, symbol: str, exchange: str = "NSE") -> dict:
+        self._ensure_tej_eod_selected()
         exchange = exchange.upper()
         if exchange not in {"NSE", "BSE"}:
             raise ValueError("exchange must be NSE or BSE")
@@ -331,9 +342,9 @@ class MarketDataService:
         return {
             "primary_eod": {
                 "provider": "TejHQ / Tej Bazaar",
-                "provider_id": "tej",
-                "status": "ready",
-                "configured": True,
+                "provider_id": (settings.EOD_DATA_PROVIDER or "tej").strip().lower(),
+                "status": "ready" if (settings.EOD_DATA_PROVIDER or "tej").strip().lower() == "tej" else "unsupported",
+                "configured": (settings.EOD_DATA_PROVIDER or "tej").strip().lower() == "tej",
                 "is_live": False,
                 "coverage": {"NSE": "2010 onwards", "BSE": "2024-07 onwards"},
                 "features": ["daily OHLCV", "full-market snapshots", "corporate actions"],
