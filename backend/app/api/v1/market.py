@@ -187,18 +187,6 @@ async def trigger_fetch(user: User = Depends(get_current_user)):
     return {"status": "queued", "message": "EOD fetch triggered in background"}
 
 
-# ── Secondary live quote source ───────────────────────────────
-@router.get("/live/quotes")
-async def get_live_quotes(user: User = Depends(get_current_user)):
-    """Return current-session quote snapshots from the configured broker API."""
-    try:
-        return await market_data_service.fetch_live_quotes()
-    except ProviderNotConfigured as exc:
-        raise HTTPException(status_code=503, detail=str(exc)) from exc
-    except ProviderRequestError as exc:
-        raise HTTPException(status_code=exc.status_code, detail=str(exc)) from exc
-
-
 # ── Provider inventory ────────────────────────────────────────
 @router.get("/sources")
 async def get_data_sources(user: User = Depends(get_current_user)):
