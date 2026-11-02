@@ -22,6 +22,10 @@ class ProviderNotConfigured(RuntimeError):
 class ProviderRequestError(RuntimeError):
     """A market data provider failed or returned an invalid response."""
 
+    def __init__(self, message: str, status_code: int = 502):
+        super().__init__(message)
+        self.status_code = status_code
+
 
 class MarketDataService:
     TEJ_BASE_URL = "https://api.tejhq.dev/v1"
@@ -64,15 +68,17 @@ class MarketDataService:
         status = response.status_code
         if status == 429:
             return ProviderRequestError(
-                f"{provider} rate limit reached. Wait for the quota window to reset."
+                f"{provider} rate limit reached. Wait for the quota window to reset.", 429
             )
         if status in (401, 403):
             return ProviderRequestError(
-                f"{provider} rejected the API credentials or access is not permitted."
+                f"{provider} rejected the API credentials or access is not permitted.", 503
             )
         if status == 404:
-            return ProviderRequestError(f"{provider} has no data for this symbol or endpoint.")
-        return ProviderRequestError(f"{provider} request failed with HTTP {status}.")
+            return ProviderRequestError(
+                f"{provider} has no data for this symbol or endpoint.", 404
+            )
+        return ProviderRequestError(f"{provider} request failed with HTTP {status}.", 502)
 
     async def fetch_tej_eod(
         self,
@@ -205,6 +211,10 @@ class MarketDataService:
             "data": payload,
             "cache": "miss",
         }
+        if len(self._bharat_cache) >= 512:
+            # Bounded best-effort eviction; Redis is the right shared cache for
+            # multi-worker production deployments.
+            self._bharat_cache.pop(next(iter(self._bharat_cache)))
         self._bharat_cache[cache_key] = (now, result)
         return result
 
