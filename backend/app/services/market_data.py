@@ -143,7 +143,7 @@ class MarketDataService:
 
         url = f"{self.TEJ_BASE_URL}/snapshot/{exchange}"
         try:
-            with httpx.Client(timeout=25.0) as client:
+            with httpx.Client(timeout=10.0) as client:
                 response = client.get(url, params={"date": trading_date})
                 if response.status_code >= 400:
                     raise self._provider_error(response, "TejHQ")
