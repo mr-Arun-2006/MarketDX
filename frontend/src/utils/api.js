@@ -42,6 +42,14 @@ export const marketAPI = {
     `/api/v1/market/stocks/${encodeURIComponent(symbol)}/eod`,
     { params: { exchange, ...(from ? { from } : {}), ...(to ? { to } : {}) } }
   ),
+  getStockAdjusted: (symbol, exchange = 'NSE', from, to) => API.get(
+    `/api/v1/market/stocks/${encodeURIComponent(symbol)}/adjusted`,
+    { params: { exchange, ...(from ? { from } : {}), ...(to ? { to } : {}) } }
+  ),
+  getStockDelivery: (symbol, exchange = 'NSE', from, to) => API.get(
+    `/api/v1/market/stocks/${encodeURIComponent(symbol)}/delivery`,
+    { params: { exchange, ...(from ? { from } : {}), ...(to ? { to } : {}) } }
+  ),
   getStockActions: (symbol, exchange = 'NSE') => API.get(
     `/api/v1/market/stocks/${encodeURIComponent(symbol)}/corporate-actions`,
     { params: { exchange } }
