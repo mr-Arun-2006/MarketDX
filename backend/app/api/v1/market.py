@@ -228,6 +228,57 @@ async def get_stock_eod(
         raise HTTPException(status_code=502, detail=str(exc)) from exc
 
 
+
+
+# ── TejHQ adjusted prices (free API key) ──────────────────────
+@router.get("/stocks/{symbol}/adjusted")
+async def get_stock_adjusted(
+    symbol: str,
+    exchange: str = Query("NSE", pattern="^(NSE|BSE)$"),
+    from_date: date | None = Query(None, alias="from"),
+    to_date: date | None = Query(None, alias="to"),
+    user: User = Depends(get_current_user),
+):
+    if from_date and to_date and from_date > to_date:
+        raise HTTPException(status_code=422, detail="'from' must be on or before 'to'.")
+    try:
+        return await market_data_service.fetch_tej_adjusted(
+            symbol, exchange,
+            from_date.isoformat() if from_date else None,
+            to_date.isoformat() if to_date else None,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except ProviderNotConfigured as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    except ProviderRequestError as exc:
+        raise HTTPException(status_code=exc.status_code, detail=str(exc)) from exc
+
+
+# ── TejHQ NSE delivery history (free API key) ─────────────────
+@router.get("/stocks/{symbol}/delivery")
+async def get_stock_delivery(
+    symbol: str,
+    exchange: str = Query("NSE", pattern="^(NSE|BSE)$"),
+    from_date: date | None = Query(None, alias="from"),
+    to_date: date | None = Query(None, alias="to"),
+    user: User = Depends(get_current_user),
+):
+    if from_date and to_date and from_date > to_date:
+        raise HTTPException(status_code=422, detail="'from' must be on or before 'to'.")
+    try:
+        return await market_data_service.fetch_tej_delivery(
+            symbol, exchange,
+            from_date.isoformat() if from_date else None,
+            to_date.isoformat() if to_date else None,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except ProviderNotConfigured as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    except ProviderRequestError as exc:
+        raise HTTPException(status_code=exc.status_code, detail=str(exc)) from exc
+
 # ── TejHQ corporate actions ────────────────────────────────────
 @router.get("/stocks/{symbol}/corporate-actions")
 async def get_stock_corporate_actions(
