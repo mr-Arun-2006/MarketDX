@@ -79,6 +79,23 @@ export default function UserDashboard() {
   const [chart, setChart] = useState(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
+  const [sources, setSources] = useState(null)
+  const [liveQuotes, setLiveQuotes] = useState(null)
+  const [stockSymbol, setStockSymbol] = useState('RELIANCE')
+  const [stockExchange, setStockExchange] = useState('NSE')
+  const [stockFrom, setStockFrom] = useState('')
+  const [stockTo, setStockTo] = useState('')
+  const [stockHistory, setStockHistory] = useState(null)
+  const [stockAdjusted, setStockAdjusted] = useState(null)
+  const [stockDelivery, setStockDelivery] = useState(null)
+  const [stockExtraLoading, setStockExtraLoading] = useState(false)
+  const [stockExtraError, setStockExtraError] = useState(null)
+  const [stockLoading, setStockLoading] = useState(false)
+  const [stockError, setStockError] = useState(null)
+  const [enrichmentSection, setEnrichmentSection] = useState('financials')
+  const [enrichmentData, setEnrichmentData] = useState(null)
+  const [enrichmentLoading, setEnrichmentLoading] = useState(false)
+  const [enrichmentError, setEnrichmentError] = useState(null)
   const { user } = useAuthStore()
 
   const load = async () => {
@@ -95,7 +112,106 @@ export default function UserDashboard() {
     } finally { setLoading(false) }
   }
 
-  useEffect(() => { load() }, [])
+  const loadSources = async () => {
+    try {
+      const response = await marketAPI.getSources()
+      setSources(response.data)
+    } catch {
+      setSources(null)
+    }
+  }
+
+  const loadStockHistory = async (event) => {
+    event?.preventDefault()
+    const symbol = stockSymbol.trim().toUpperCase()
+    if (!symbol) return
+    setStockLoading(true)
+    setStockError(null)
+    setStockHistory(null)
+    setStockAdjusted(null)
+    setStockDelivery(null)
+    setStockExtraError(null)
+    setEnrichmentData(null)
+    try {
+      const response = await marketAPI.getStockEOD(symbol, stockExchange, stockFrom || undefined, stockTo || undefined)
+      setStockHistory(response.data)
+    } catch (e) {
+      setStockError(e.response?.data?.detail || e.message || 'Unable to load TejHQ EOD history')
+    } finally {
+      setStockLoading(false)
+    }
+  }
+
+  const loadTejExtra = async (kind) => {
+    const symbol = stockSymbol.trim().toUpperCase()
+    if (!symbol) return
+    if (kind === 'delivery' && stockExchange !== 'NSE') {
+      setStockExtraError('TejHQ delivery history is available for NSE only.')
+      return
+    }
+    setStockExtraLoading(true)
+    setStockExtraError(null)
+    try {
+      const response = kind === 'adjusted'
+        ? await marketAPI.getStockAdjusted(symbol, stockExchange, stockFrom || undefined, stockTo || undefined)
+        : await marketAPI.getStockDelivery(symbol, stockExchange, stockFrom || undefined, stockTo || undefined)
+      if (kind === 'adjusted') setStockAdjusted(response.data)
+      else setStockDelivery(response.data)
+    } catch (e) {
+      setStockExtraError(e.response?.data?.detail || e.message || `Unable to load TejHQ ${kind} data`)
+    } finally {
+      setStockExtraLoading(false)
+    }
+  }
+
+  const loadEnrichment = async () => {
+    const symbol = stockSymbol.trim().toUpperCase()
+    if (!symbol) return
+    setEnrichmentLoading(true)
+    setEnrichmentError(null)
+    setEnrichmentData(null)
+    try {
+      const response = await marketAPI.getStockEnrichment(
+        symbol,
+        enrichmentSection,
+        stockExchange,
+        enrichmentSection === 'financials' ? { period_type: 'annual', page_size: 10 } : { page_size: 20 }
+      )
+      setEnrichmentData(response.data)
+    } catch (e) {
+      setEnrichmentError(e.response?.data?.detail || e.message || 'Unable to load BharatStock enrichment')
+    } finally {
+      setEnrichmentLoading(false)
+    }
+  }
+
+  useEffect(() => {
+    load()
+    loadSources()
+  }, [])
+
+  useEffect(() => {
+    if (!sources?.live?.configured) return undefined
+    let active = true
+    const refreshQuotes = async () => {
+      try {
+        const response = await marketAPI.getLiveQuotes()
+        if (active) setLiveQuotes(response.data)
+      } catch {
+        if (active) setLiveQuotes(null)
+      }
+    }
+    refreshQuotes()
+    const timer = window.setInterval(refreshQuotes, 15000)
+    return () => {
+      active = false
+      window.clearInterval(timer)
+    }
+  }, [sources?.live?.configured])
+
+  const stockRows = [...(stockHistory?.data || [])]
+    .sort((a, b) => String(b.date || b.trade_date || '').localeCompare(String(a.date || a.trade_date || '')))
+    .slice(0, 5)
 
   const hs  = data?.health_score
   const nse = data?.nse
@@ -121,6 +237,155 @@ export default function UserDashboard() {
           <RefreshCw size={14} style={{ animation:loading?'spin 1s linear infinite':'none' }}/> Refresh Data
         </button>
       </div>
+
+      {/* Data provider routing: EOD is primary; live quotes are a separate secondary feed. */}
+      <Card style={{ padding:20, marginBottom:20 }}>
+        <div style={{ fontSize:11, fontWeight:800, color:'var(--primary)', letterSpacing:'0.08em', marginBottom:12 }}>
+          MARKET DATA SOURCES
+        </div>
+        <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit,minmax(190px,1fr))', gap:12 }}>
+          {[
+            ['PRIMARY EOD · EQUITIES', sources?.primary_eod],
+            ['EOD ENRICHMENT', sources?.eod_enrichment],
+            ['SECONDARY · LIVE', sources?.live],
+            ['INDEX DIAGNOSIS', sources?.index_diagnosis],
+          ].map(([label, source]) => (
+            <div key={label} style={{ padding:14, background:'var(--violet-50)', border:'1px solid var(--border)', borderRadius:10 }}>
+              <div style={{ fontSize:10, fontWeight:800, color:'var(--text-muted)', letterSpacing:'0.05em' }}>{label}</div>
+              <div style={{ fontSize:14, fontWeight:800, color:'var(--text)', marginTop:6 }}>
+                {source?.provider || 'Checking provider…'}
+              </div>
+              <div style={{ fontSize:11, marginTop:5, color:source?.configured || source?.status==='ready' ? '#059669' : '#b45309', fontWeight:700 }}>
+                {source?.configured ? 'Configured' : source?.status==='ready' ? 'Ready · no key required' : source?.status==='fallback' ? 'Fallback source' : source?.status==='needs_api_key' ? 'API key required' : source?.status==='needs_credentials' ? 'Credentials required' : 'Status unavailable'}
+              </div>
+              <div style={{ fontSize:11, color:'var(--text-muted)', lineHeight:1.5, marginTop:7 }}>
+                {source?.coverage ? `NSE ${source.coverage.NSE} · BSE ${source.coverage.BSE}` : source?.daily_quota || source?.note || 'Provider metadata loading'}
+              </div>
+            </div>
+          ))}
+        </div>
+        <div style={{ fontSize:11, color:'var(--text-muted)', marginTop:12, lineHeight:1.5 }}>
+          TejHQ supplies individual-stock EOD candles. BharatStock adds fundamentals on request. Live quotes only activate after Upstox credentials are configured. Current Nifty, Sensex, India VIX and Bank Nifty diagnosis still uses the clearly labelled index fallback.
+        </div>
+      </Card>
+
+      {liveQuotes?.quotes?.length > 0 && (
+        <Card style={{ padding:18, marginBottom:20 }}>
+          <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:12 }}>
+            <div style={{ fontSize:11, fontWeight:800, color:'var(--primary)', letterSpacing:'0.08em' }}>LIVE MARKET SNAPSHOT · UPSTOX</div>
+            <div style={{ fontSize:10, color:'var(--text-muted)' }}>Updated {new Date(liveQuotes.fetched_at).toLocaleTimeString('en-IN')}</div>
+          </div>
+          <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit,minmax(150px,1fr))', gap:10 }}>
+            {liveQuotes.quotes.map((quote) => (
+              <div key={quote.instrument_key} style={{ padding:12, border:'1px solid var(--border)', borderRadius:10 }}>
+                <div style={{ fontSize:11, color:'var(--text-muted)', fontWeight:700 }}>{quote.symbol}</div>
+                <div style={{ fontSize:19, fontWeight:800, color:'var(--text)', marginTop:4 }}>
+                  {quote.last_price != null ? `₹${Number(quote.last_price).toLocaleString('en-IN',{maximumFractionDigits:2})}` : '—'}
+                </div>
+                <div style={{ fontSize:12, fontWeight:700, color:quote.change>=0?'#059669':'#dc2626', marginTop:3 }}>
+                  {quote.change_percent != null ? `${quote.change>=0?'+':''}${quote.change} · ${quote.change_percent}%` : '—'}
+                </div>
+              </div>
+            ))}
+          </div>
+          <div style={{ fontSize:10, color:'var(--text-muted)', marginTop:10 }}>Secondary intraday quote feed. It does not replace the EOD diagnosis dataset.</div>
+        </Card>
+      )}
+
+      {/* TejHQ stock EOD history and optional BharatStock enrichment. */}
+      <Card style={{ padding:20, marginBottom:20 }}>
+        <div style={{ fontSize:11, fontWeight:800, color:'var(--primary)', letterSpacing:'0.08em', marginBottom:12 }}>
+          EQUITY EOD DATA EXPLORER · TEJ BAZAAR
+        </div>
+        <form onSubmit={loadStockHistory} style={{ display:'flex', flexWrap:'wrap', gap:8, alignItems:'center' }}>
+          <input
+            value={stockSymbol}
+            onChange={e=>setStockSymbol(e.target.value.toUpperCase())}
+            placeholder="Stock symbol e.g. RELIANCE"
+            aria-label="Stock symbol"
+            style={{ flex:'1 1 180px', minWidth:150, padding:'10px 12px', border:'1px solid var(--border)', borderRadius:8, fontSize:13, fontFamily:'var(--font)' }}
+          />
+          <input type="date" value={stockFrom} onChange={e=>setStockFrom(e.target.value)} aria-label="History start date"
+            style={{ padding:'10px 12px', border:'1px solid var(--border)', borderRadius:8, fontSize:12, fontFamily:'var(--font)' }}/>
+          <input type="date" value={stockTo} onChange={e=>setStockTo(e.target.value)} aria-label="History end date"
+            style={{ padding:'10px 12px', border:'1px solid var(--border)', borderRadius:8, fontSize:12, fontFamily:'var(--font)' }}/>
+          <select value={stockExchange} onChange={e=>{setStockExchange(e.target.value);setStockFrom('')}} aria-label="Exchange"
+            style={{ padding:'10px 12px', border:'1px solid var(--border)', borderRadius:8, fontSize:13, fontFamily:'var(--font)', background:'#fff' }}>
+            <option value="NSE">NSE</option><option value="BSE">BSE</option>
+          </select>
+          <button type="submit" disabled={stockLoading} style={{ padding:'10px 16px', border:0, borderRadius:8, background:'var(--primary)', color:'#fff', fontWeight:700, cursor:'pointer', fontFamily:'var(--font)' }}>
+            {stockLoading ? 'Loading…' : 'Load EOD history'}
+          </button>
+        </form>
+        {stockError && <div style={{ color:'#b91c1c', fontSize:12, marginTop:10 }}>{stockError}</div>}
+        {stockHistory && (
+          <div style={{ marginTop:16 }}>
+            <div style={{ display:'flex', justifyContent:'space-between', flexWrap:'wrap', gap:8, marginBottom:10 }}>
+              <div style={{ fontSize:13, fontWeight:800 }}>{stockHistory.symbol} · {stockHistory.exchange} · {stockHistory.count} daily rows</div>
+              <div style={{ fontSize:11, color:'var(--text-muted)' }}>Source: {stockHistory.provider} · As of {stockHistory.as_of || 'date unavailable'}</div>
+            </div>
+            <div style={{ overflowX:'auto' }}>
+              <table style={{ width:'100%', borderCollapse:'collapse', fontSize:12 }}>
+                <thead><tr>{['Date','Open','High','Low','Close','Volume','Delivery %'].map(label=><th key={label} style={{ textAlign:'right', padding:'8px 10px', borderBottom:'1px solid var(--border)', color:'var(--text-muted)' }}>{label}</th>)}</tr></thead>
+                <tbody>
+                  {stockRows.map((row,i)=>(
+                    <tr key={row.date || row.trade_date || i}>
+                      <td style={{ padding:'8px 10px', textAlign:'right' }}>{row.date || row.trade_date || '—'}</td>
+                      {[row.open,row.high,row.low,row.close,row.volume,row.delivery_pct].map((value,j)=>(
+                        <td key={j} style={{ padding:'8px 10px', textAlign:'right' }}>{value == null ? '—' : Number(value).toLocaleString('en-IN',{maximumFractionDigits:2})}</td>
+                      ))}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <div style={{ fontSize:10, color:'var(--text-muted)', marginTop:8 }}>{stockHistory.notice}</div>
+          </div>
+        )}
+        <div style={{ display:'flex', flexWrap:'wrap', gap:8, alignItems:'center', marginTop:12 }}>
+          <button type="button" onClick={()=>loadTejExtra('adjusted')} disabled={stockExtraLoading || !stockHistory || !sources?.primary_eod?.free_key_status || sources.primary_eod.free_key_status!=='configured'}
+            style={{ padding:'8px 12px', border:'1px solid var(--border)', borderRadius:8, background:'#fff', color:'var(--text)', fontSize:12, fontWeight:700, cursor:'pointer', opacity:sources?.primary_eod?.free_key_status==='configured'?1:0.55 }}>
+            {stockExtraLoading ? 'Loading…' : 'Load adjusted prices'}
+          </button>
+          <button type="button" onClick={()=>loadTejExtra('delivery')} disabled={stockExtraLoading || !stockHistory || stockExchange!=='NSE' || sources?.primary_eod?.free_key_status!=='configured'}
+            style={{ padding:'8px 12px', border:'1px solid var(--border)', borderRadius:8, background:'#fff', color:'var(--text)', fontSize:12, fontWeight:700, cursor:'pointer', opacity:sources?.primary_eod?.free_key_status==='configured' && stockExchange==='NSE'?1:0.55 }}>
+            {stockExtraLoading ? 'Loading…' : 'Load NSE delivery'}
+          </button>
+          {sources?.primary_eod?.free_key_status!=='configured' && <span style={{ fontSize:11, color:'var(--text-muted)' }}>Set TEJ_API_KEY to unlock adjusted prices and delivery (free key · 1,000 requests/day).</span>}
+        </div>
+        {stockExtraError && <div style={{ color:'#b91c1c', fontSize:12, marginTop:8 }}>{stockExtraError}</div>}
+        {(stockAdjusted || stockDelivery) && (
+          <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit,minmax(230px,1fr))', gap:10, marginTop:12 }}>
+            {stockAdjusted && <div style={{ padding:12, border:'1px solid var(--border)', borderRadius:8, background:'var(--violet-50)' }}>
+              <div style={{ fontSize:11, fontWeight:800, marginBottom:6 }}>BACK-ADJUSTED PRICES</div>
+              <div style={{ fontSize:11, color:'var(--text-muted)', marginBottom:8 }}>{stockAdjusted.count} rows · {stockAdjusted.provider}</div>
+              <pre style={{ whiteSpace:'pre-wrap', overflowX:'auto', maxHeight:170, fontSize:10 }}>{JSON.stringify(stockAdjusted.data?.slice?.(-3) || stockAdjusted.data,null,2)}</pre>
+            </div>}
+            {stockDelivery && <div style={{ padding:12, border:'1px solid var(--border)', borderRadius:8, background:'var(--violet-50)' }}>
+              <div style={{ fontSize:11, fontWeight:800, marginBottom:6 }}>NSE DELIVERY HISTORY</div>
+              <div style={{ fontSize:11, color:'var(--text-muted)', marginBottom:8 }}>{stockDelivery.count} rows · {stockDelivery.provider}</div>
+              <pre style={{ whiteSpace:'pre-wrap', overflowX:'auto', maxHeight:170, fontSize:10 }}>{JSON.stringify(stockDelivery.data?.slice?.(-3) || stockDelivery.data,null,2)}</pre>
+            </div>}
+          </div>
+        )}
+        <div style={{ display:'flex', flexWrap:'wrap', gap:8, alignItems:'center', marginTop:16, paddingTop:14, borderTop:'1px solid var(--border)' }}>
+          <span style={{ fontSize:12, fontWeight:700, color:'var(--text)' }}>BharatStock enrichment</span>
+          <select value={enrichmentSection} onChange={e=>setEnrichmentSection(e.target.value)} aria-label="Enrichment type"
+            style={{ padding:'8px 10px', border:'1px solid var(--border)', borderRadius:8, fontSize:12, background:'#fff' }}>
+            <option value="financials">Financial statements</option>
+            <option value="ratios">Valuation ratios</option>
+            <option value="shareholding">Shareholding</option>
+            <option value="corporate-actions">Corporate actions</option>
+          </select>
+          <button type="button" onClick={loadEnrichment} disabled={enrichmentLoading || !sources?.eod_enrichment?.configured}
+            style={{ padding:'9px 13px', border:'1px solid var(--border)', borderRadius:8, background:'#fff', color:'var(--text)', fontWeight:700, cursor:'pointer', fontFamily:'var(--font)', opacity:sources?.eod_enrichment?.configured?1:0.55 }}>
+            {enrichmentLoading ? 'Loading…' : 'Load enrichment'}
+          </button>
+          {!sources?.eod_enrichment?.configured && <span style={{ fontSize:11, color:'var(--text-muted)' }}>Set BHARATSTOCK_API_KEY in backend environment to enable (60 requests/day on Free).</span>}
+        </div>
+        {enrichmentError && <div style={{ color:'#b91c1c', fontSize:12, marginTop:8 }}>{enrichmentError}</div>}
+        {enrichmentData && <pre style={{ whiteSpace:'pre-wrap', overflowX:'auto', maxHeight:260, padding:12, marginTop:10, background:'var(--violet-50)', borderRadius:8, fontSize:11, color:'var(--text)' }}>{JSON.stringify(enrichmentData.data,null,2)}</pre>}
+      </Card>
 
       {loading && !data && (
         <div style={{ textAlign:'center', padding:80 }}>

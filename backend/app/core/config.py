@@ -12,6 +12,12 @@ class Settings(BaseSettings):
 
     GEMINI_API_KEY: str = ""
     ALPHA_VANTAGE_KEY: str = ""
+    EOD_DATA_PROVIDER: str = "tej"
+    TEJ_API_KEY: str = ""
+    BHARATSTOCK_API_KEY: str = ""
+    LIVE_DATA_PROVIDER: str = "upstox"
+    UPSTOX_ACCESS_TOKEN: str = ""
+    UPSTOX_INSTRUMENT_KEYS: str = "NSE_INDEX|Nifty 50,NSE_INDEX|Nifty Bank,BSE_INDEX|SENSEX"
     WEBHOOK_SECRET: str = ""
 
     ALLOWED_ORIGINS: List[str] = ["http://localhost", "http://localhost:3000"]

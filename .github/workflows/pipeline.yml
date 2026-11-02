@@ -18,6 +18,23 @@ jobs:
   backend-tests:
     name: Backend tests
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: mdp_user
+          POSTGRES_PASSWORD: mdp_pass
+          POSTGRES_DB: market_diagnosis
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U mdp_user -d market_diagnosis"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      PYTHONPATH: ${{ github.workspace }}/backend
+      DATABASE_URL: postgresql+asyncpg://mdp_user:mdp_pass@localhost:5432/market_diagnosis
     steps:
       - uses: actions/checkout@v4
       - name: Set up Python
