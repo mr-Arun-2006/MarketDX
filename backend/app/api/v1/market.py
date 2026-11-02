@@ -38,8 +38,10 @@ async def get_eod(user: User = Depends(get_current_user)):
         "date": f.date.isoformat(),
         "data_source": {
             "mode": "EOD", "provider": f.data_source,
+            "index_provider": f.data_source,
+            "breadth_provider": f.breadth_source,
             "as_of": f.data_as_of or f.date.isoformat(),
-            "is_live": False, "purpose": "Primary source for market diagnosis",
+            "is_live": False, "purpose": "Index-series diagnosis plus TejHQ equity breadth where available",
         },
         "nse": {
             "nifty_open": f.nse_open, "nifty_close": f.nse_close,
