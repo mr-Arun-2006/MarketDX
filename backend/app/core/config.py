@@ -13,6 +13,7 @@ class Settings(BaseSettings):
     GEMINI_API_KEY: str = ""
     ALPHA_VANTAGE_KEY: str = ""
     EOD_DATA_PROVIDER: str = "tej"
+    TEJ_API_KEY: str = ""
     BHARATSTOCK_API_KEY: str = ""
     LIVE_DATA_PROVIDER: str = "upstox"
     UPSTOX_ACCESS_TOKEN: str = ""
