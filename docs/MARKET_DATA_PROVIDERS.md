@@ -36,7 +36,7 @@ Authentication uses `X-API-Key`.
 
 ### Live quote status
 
-Intraday/live quotes are intentionally disabled in this version. No broker token, Upstox adapter, live quote API route or browser polling is configured. Choose and verify a replacement provider before enabling live prices; EOD history and EOD enrichment continue independently.
+Intraday/live quotes are intentionally disabled in this version. No broker token, live quote adapter, live quote API route or browser polling is configured. Choose and verify a replacement provider before enabling live prices; EOD history and EOD enrichment continue independently.
 
 ### Index-series limitation
 
