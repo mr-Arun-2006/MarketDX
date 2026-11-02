@@ -64,6 +64,7 @@ class MarketFeatures:
     history_dates: List[str] = field(default_factory=list)
     data_source: str = "Yahoo Finance (index-only fallback)"
     data_as_of: Optional[str] = None
+    breadth_source: str = "Index-derived estimate"
 
 
 @dataclass
@@ -98,10 +99,51 @@ class MarketHealthEngine:
                 logger.warning("yfinance empty — market holiday or network issue")
                 return None
             data = self._clean(data)
-            return self._build_features(data, target)
+            features = self._build_features(data, target)
+            if features is None:
+                return None
+            self._apply_tej_market_breadth(features)
+            return features
         except Exception as e:
             logger.error(f"Collection failed: {e}")
             return None
+
+
+    def _apply_tej_market_breadth(self, features: MarketFeatures) -> None:
+        """Replace estimated A/D breadth with real TejHQ exchange snapshot counts."""
+        sources = []
+        for exchange in ("nse", "bse"):
+            try:
+                rows = market_data_service.fetch_tej_snapshot(exchange, features.date.isoformat())
+                advances = 0
+                declines = 0
+                for row in rows:
+                    close = row.get("close")
+                    previous = row.get("prev_close")
+                    try:
+                        close_value = float(close)
+                        previous_value = float(previous)
+                    except (TypeError, ValueError):
+                        continue
+                    if close_value > previous_value:
+                        advances += 1
+                    elif close_value < previous_value:
+                        declines += 1
+                if advances + declines == 0:
+                    continue
+                if exchange == "nse":
+                    features.nse_advances = advances
+                    features.nse_declines = declines
+                    features.nse_ad_ratio = round(advances / max(declines, 1), 3)
+                else:
+                    features.bse_advances = advances
+                    features.bse_declines = declines
+                    features.bse_ad_ratio = round(advances / max(declines, 1), 3)
+                sources.append(exchange.upper())
+            except Exception as exc:
+                logger.warning(f"TejHQ {exchange.upper()} breadth unavailable; retaining fallback estimate: {exc}")
+        if sources:
+            features.breadth_source = "TejHQ full-market EOD snapshot (" + ", ".join(sources) + ")"
 
     # ── Module 3 ───────────────────────────────────────────────
     def _clean(self, data: pd.DataFrame) -> pd.DataFrame:
