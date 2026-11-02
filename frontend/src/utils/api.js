@@ -37,7 +37,6 @@ export const marketAPI = {
   getIndicators: () => API.get('/api/v1/market/indicators'),
   getSummary:    () => API.get('/api/v1/market/summary'),
   getSources:    () => API.get('/api/v1/market/sources'),
-  getLiveQuotes: () => API.get('/api/v1/market/live/quotes'),
   getStockEOD:   (symbol, exchange = 'NSE', from, to) => API.get(
     `/api/v1/market/stocks/${encodeURIComponent(symbol)}/eod`,
     { params: { exchange, ...(from ? { from } : {}), ...(to ? { to } : {}) } }
