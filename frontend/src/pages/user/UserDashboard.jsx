@@ -83,7 +83,7 @@ export default function UserDashboard() {
   const [liveQuotes, setLiveQuotes] = useState(null)
   const [stockSymbol, setStockSymbol] = useState('RELIANCE')
   const [stockExchange, setStockExchange] = useState('NSE')
-  const [stockFrom, setStockFrom] = useState('2010-01-04')
+  const [stockFrom, setStockFrom] = useState('')
   const [stockTo, setStockTo] = useState('')
   const [stockHistory, setStockHistory] = useState(null)
   const [stockAdjusted, setStockAdjusted] = useState(null)
@@ -309,7 +309,7 @@ export default function UserDashboard() {
             style={{ padding:'10px 12px', border:'1px solid var(--border)', borderRadius:8, fontSize:12, fontFamily:'var(--font)' }}/>
           <input type="date" value={stockTo} onChange={e=>setStockTo(e.target.value)} aria-label="History end date"
             style={{ padding:'10px 12px', border:'1px solid var(--border)', borderRadius:8, fontSize:12, fontFamily:'var(--font)' }}/>
-          <select value={stockExchange} onChange={e=>{setStockExchange(e.target.value);setStockFrom(e.target.value==='NSE'?'2010-01-04':'2024-07-08')}} aria-label="Exchange"
+          <select value={stockExchange} onChange={e=>{setStockExchange(e.target.value);setStockFrom('')}} aria-label="Exchange"
             style={{ padding:'10px 12px', border:'1px solid var(--border)', borderRadius:8, fontSize:13, fontFamily:'var(--font)', background:'#fff' }}>
             <option value="NSE">NSE</option><option value="BSE">BSE</option>
           </select>
@@ -377,11 +377,12 @@ export default function UserDashboard() {
             <option value="shareholding">Shareholding</option>
             <option value="corporate-actions">Corporate actions</option>
           </select>
-          <button type="button" onClick={loadEnrichment} disabled={enrichmentLoading || !sources?.eod_enrichment?.configured}
-            style={{ padding:'9px 13px', border:'1px solid var(--border)', borderRadius:8, background:'#fff', color:'var(--text)', fontWeight:700, cursor:'pointer', fontFamily:'var(--font)', opacity:sources?.eod_enrichment?.configured?1:0.55 }}>
+          <button type="button" onClick={loadEnrichment} disabled={enrichmentLoading || !sources?.eod_enrichment?.configured || stockExchange!=='NSE'}
+            style={{ padding:'9px 13px', border:'1px solid var(--border)', borderRadius:8, background:'#fff', color:'var(--text)', fontWeight:700, cursor:'pointer', fontFamily:'var(--font)', opacity:sources?.eod_enrichment?.configured && stockExchange==='NSE'?1:0.55 }}>
             {enrichmentLoading ? 'Loading…' : 'Load enrichment'}
           </button>
           {!sources?.eod_enrichment?.configured && <span style={{ fontSize:11, color:'var(--text-muted)' }}>Set BHARATSTOCK_API_KEY in backend environment to enable (60 requests/day on Free).</span>}
+          {stockExchange==='BSE' && <span style={{ fontSize:11, color:'var(--text-muted)' }}>BharatStock's section endpoints do not document an exchange override; enrichment is restricted to NSE in this version.</span>}
         </div>
         {enrichmentError && <div style={{ color:'#b91c1c', fontSize:12, marginTop:8 }}>{enrichmentError}</div>}
         {enrichmentData && <pre style={{ whiteSpace:'pre-wrap', overflowX:'auto', maxHeight:260, padding:12, marginTop:10, background:'var(--violet-50)', borderRadius:8, fontSize:11, color:'var(--text)' }}>{JSON.stringify(enrichmentData.data,null,2)}</pre>}
