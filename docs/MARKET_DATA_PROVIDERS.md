@@ -17,7 +17,7 @@ MarketDX separates daily analysis data from intraday dashboard quotes. Provider 
 
 ### TejHQ / Tej Bazaar
 
-The documented keyless OHLCV endpoint defaults to the latest 90 days. Supply `from` and `to` to request another date range. NSE history starts on 2010-01-04; BSE history starts on 2024-07-08. TejHQ refreshes trading days around 18:30 IST and has a 21:30 IST retry according to its API reference.
+The documented keyless OHLCV endpoint defaults to the latest 90 days. Supply `from` and `to` to request another date range. NSE history starts on 2010-01-04; BSE history starts on 2024-07-08. TejHQ's pipeline runs around 18:30 IST with a 21:30 IST retry. MarketDX's Celery job is scheduled for 22:00 IST on weekdays so it runs after that retry window; use TejHQ's status endpoint if a trading day's publication is delayed.
 
 The keyless endpoints cover daily OHLCV, full-market snapshots and corporate actions. A free TejHQ API key unlocks back-adjusted prices and NSE delivery quantity / delivery percentage, with a stated free-key quota of 1,000 calls/day and 300 calls/minute. The API key uses `Authorization: Bearer ...` (or `X-Api-Key`).
 
@@ -25,7 +25,7 @@ The keyless endpoints cover daily OHLCV, full-market snapshots and corporate act
 
 MarketDX requests one BharatStock section per user action; it does not automatically fan out enrichment calls for every stock. The Free plan has 60 calls/day and returns at most the latest year for time-series endpoints; annual financial statements can return two years. MarketDX caches successful section responses for 30 minutes in each backend process to reduce calls. This cache is process-local, so deployments with multiple workers should use a shared Redis cache and a daily quota guard.
 
-The implemented section paths follow BharatStock's reference:
+The implemented section paths follow BharatStock's reference and pass `exchange=NSE|BSE` to disambiguate cross-listed or shared tickers:
 
 - `GET /v1/stocks/{ticker}/financials` with `period_type=quarterly|annual`, `page`, and `page_size`.
 - `GET /v1/stocks/{ticker}/ratios`.
@@ -77,7 +77,7 @@ The BharatStock enrichment route accepts one section per request. It should not 
 API access does not automatically grant a right to redistribute exchange data.
 
 - **TejHQ:** Keyless/open access and a free personal API key do not imply commercial redistribution rights. TejHQ's code being MIT-licensed does not license the underlying NSE/BSE data. Confirm the permitted tier and data rights directly with TejHQ before using its data in a public or commercial MarketDX deployment.
-- **BharatStock:** Its reference distinguishes the Free plan's personal, evaluation, internal or non-commercial local use from paid-tier display to end users. Public or retail display of financial statements, ratios, shareholding and corporate actions requires an active paid tier and the applicable attribution. Exchange-owned EOD prices/OHLCV and index values require a separate direct display or redistribution licence from the relevant exchange; a BharatStock subscription does not grant that exchange licence. Do not publicly serve Free-tier stored data.
+- **BharatStock:** The Free plan is for personal, evaluation, internal or non-commercial local use. Public or retail display of financial statements, ratios, shareholding and corporate actions requires an active paid tier and the applicable attribution. Exchange-owned EOD prices/OHLCV and index values require a separate direct display or redistribution licence from the relevant exchange; a BharatStock subscription does not grant that exchange licence. Do not publicly serve Free-tier stored data.
 - **Upstox:** Market-data use and public display are subject to the broker's API permissions and exchange-data terms. Review the account's permissions before enabling public display.
 
 Before enabling multi-user production access, review each provider's current terms and secure any required licences. Treat prices and derived analysis as informational; validate them against an appropriately licensed primary source before trading or commercial use.
