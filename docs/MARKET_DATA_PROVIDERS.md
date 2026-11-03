@@ -12,7 +12,7 @@ MarketDX separates daily analysis data from intraday dashboard quotes. Provider 
 | Back-adjusted prices | TejHQ | Free API key |
 | NSE delivery quantity / percentage | TejHQ | Free API key; NSE only |
 | Financial statements, ratios, shareholding, corporate actions | BharatStock | API key; Free plan 60 calls/day |
-| Intraday quote snapshots | Upstox | Broker API access token |
+| Intraday/live quotes | Disabled | No provider configured |
 | Nifty, Sensex, India VIX and Bank Nifty index series | Yahoo Finance | Temporary index-only fallback |
 
 ### TejHQ / Tej Bazaar
@@ -34,9 +34,9 @@ The implemented section paths follow BharatStock's reference and pass `exchange=
 
 Authentication uses `X-API-Key`.
 
-### Upstox live quotes
+### Live quote status
 
-Upstox quotes are fetched separately through the authenticated backend. The browser polls the quote endpoint every 15 seconds only when the backend reports an Upstox token is configured. This implementation uses REST quote snapshots, not a tick-by-tick WebSocket market stream. No provider key or broker token is sent to the frontend.
+Intraday/live quotes are intentionally disabled in this version. No broker token, live quote adapter, live quote API route or browser polling is configured. Choose and verify a replacement provider before enabling live prices; EOD history and EOD enrichment continue independently.
 
 ### Index-series limitation
 
@@ -50,9 +50,7 @@ Add these to the backend deployment environment. Do not commit real values.
 EOD_DATA_PROVIDER=tej
 TEJ_API_KEY=
 BHARATSTOCK_API_KEY=
-LIVE_DATA_PROVIDER=upstox
-UPSTOX_ACCESS_TOKEN=
-UPSTOX_INSTRUMENT_KEYS=NSE_INDEX|Nifty 50,NSE_INDEX|Nifty Bank,BSE_INDEX|SENSEX
+# Live quote feed intentionally disabled until a replacement provider is selected.
 ```
 
 ## MarketDX API routes
@@ -68,7 +66,6 @@ All MarketDX routes below require a MarketDX user access token:
 - `GET /api/v1/market/stocks/{symbol}/enrichment/ratios`
 - `GET /api/v1/market/stocks/{symbol}/enrichment/shareholding`
 - `GET /api/v1/market/stocks/{symbol}/enrichment/corporate-actions?action_type=dividend`
-- `GET /api/v1/market/live/quotes`
 
 The BharatStock enrichment route accepts one section per request. It should not be automatically called for every symbol on page load.
 
@@ -78,6 +75,5 @@ API access does not automatically grant a right to redistribute exchange data.
 
 - **TejHQ:** Keyless/open access and a free personal API key do not imply commercial redistribution rights. TejHQ's code being MIT-licensed does not license the underlying NSE/BSE data. Confirm the permitted tier and data rights directly with TejHQ before using its data in a public or commercial MarketDX deployment.
 - **BharatStock:** The Free plan is for personal, evaluation, internal or non-commercial local use. Public or retail display of financial statements, ratios, shareholding and corporate actions requires an active paid tier and the applicable attribution. Exchange-owned EOD prices/OHLCV and index values require a separate direct display or redistribution licence from the relevant exchange; a BharatStock subscription does not grant that exchange licence. Do not publicly serve Free-tier stored data.
-- **Upstox:** Market-data use and public display are subject to the broker's API permissions and exchange-data terms. Review the account's permissions before enabling public display.
 
 Before enabling multi-user production access, review each provider's current terms and secure any required licences. Treat prices and derived analysis as informational; validate them against an appropriately licensed primary source before trading or commercial use.

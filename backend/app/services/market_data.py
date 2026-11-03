@@ -1,11 +1,10 @@
-"""Provider adapters for EOD, fundamentals enrichment and live quotes.
+"""Provider adapters for EOD and fundamentals enrichment.
 
 TejHQ is the primary per-equity EOD source. BharatStock is an optional,
-quota-limited fundamentals/enrichment source. Upstox is the separate live
-quote source. Nifty/Sensex/VIX index diagnosis remains explicitly sourced
-from Yahoo Finance until an index EOD feed is integrated.
+quota-limited fundamentals/enrichment source. No live quote provider is
+currently configured. Nifty/Sensex/VIX index diagnosis remains explicitly
+sourced from Yahoo Finance until an index EOD feed is integrated.
 """
-from datetime import datetime, timezone
 from time import monotonic
 from typing import Any
 
@@ -30,7 +29,6 @@ class ProviderRequestError(RuntimeError):
 class MarketDataService:
     TEJ_BASE_URL = "https://api.tejhq.dev/v1"
     BHARATSTOCK_BASE_URL = "https://bharatstockapi.com/v1"
-    UPSTOX_QUOTES_URL = "https://api.upstox.com/v2/market-quote/quotes"
     BHARATSTOCK_CACHE_SECONDS = 1800
     SNAPSHOT_CACHE_SECONDS = 21600
 
@@ -363,13 +361,13 @@ class MarketDataService:
                 "note": "Free is for personal/evaluation/internal non-commercial use. Public display of permitted filing data needs a paid tier; exchange-owned OHLCV/index display needs a direct exchange licence.",
             },
             "live": {
-                "provider": "Upstox Market Quote API",
-                "provider_id": "upstox",
-                "status": "ready" if bool(settings.UPSTOX_ACCESS_TOKEN) else "needs_credentials",
-                "configured": bool(settings.UPSTOX_ACCESS_TOKEN),
-                "is_live": True,
-                "transport": "REST quote snapshots; dashboard polling",
-                "note": "Requires an Upstox access token. Separate from EOD analysis.",
+                "provider": "Not configured",
+                "provider_id": "none",
+                "status": "disabled",
+                "configured": False,
+                "is_live": False,
+                "transport": "disabled",
+                "note": "Live quotes are intentionally disabled. Select a replacement provider before enabling intraday prices.",
             },
             "index_diagnosis": {
                 "provider": "Yahoo Finance (yfinance)",
@@ -380,111 +378,6 @@ class MarketDataService:
             },
         }
 
-    @staticmethod
-    def _timestamp_to_iso(value: Any) -> str | None:
-        if value is None or value == "":
-            return None
-        try:
-            numeric = float(value)
-            seconds = numeric / 1000 if numeric > 10_000_000_000 else numeric
-            return datetime.fromtimestamp(seconds, tz=timezone.utc).isoformat()
-        except (TypeError, ValueError, OverflowError):
-            pass
-        try:
-            parsed = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
-            if parsed.tzinfo is None:
-                parsed = parsed.replace(tzinfo=timezone.utc)
-            return parsed.isoformat()
-        except ValueError:
-            return str(value)
-
-    @classmethod
-    def normalize_upstox_quote(cls, instrument_key: str, quote: dict) -> dict:
-        ohlc = quote.get("ohlc") or {}
-        last_price = quote.get("last_price")
-        previous_close = ohlc.get("close") or quote.get("prev_close_price")
-        net_change = quote.get("net_change")
-
-        if net_change is None and last_price is not None and previous_close:
-            net_change = float(last_price) - float(previous_close)
-
-        change_percent = None
-        if net_change is not None and previous_close:
-            try:
-                change_percent = round(float(net_change) / float(previous_close) * 100, 2)
-            except (TypeError, ValueError, ZeroDivisionError):
-                change_percent = None
-
-        return {
-            "instrument_key": quote.get("instrument_token") or instrument_key,
-            "symbol": quote.get("symbol") or instrument_key.split("|")[-1],
-            "last_price": float(last_price) if last_price is not None else None,
-            "change": round(float(net_change), 2) if net_change is not None else None,
-            "change_percent": change_percent,
-            "previous_close": float(previous_close) if previous_close is not None else None,
-            "open": ohlc.get("open"),
-            "high": ohlc.get("high"),
-            "low": ohlc.get("low"),
-            "volume": quote.get("volume"),
-            "last_trade_time": cls._timestamp_to_iso(
-                quote.get("last_trade_time") or quote.get("timestamp")
-            ),
-        }
-
-    async def fetch_live_quotes(self) -> dict:
-        provider = (settings.LIVE_DATA_PROVIDER or "upstox").strip().lower()
-        if provider != "upstox":
-            raise ProviderNotConfigured(
-                f"Unsupported LIVE_DATA_PROVIDER '{provider}'. Configure 'upstox'."
-            )
-
-        token = settings.UPSTOX_ACCESS_TOKEN.strip()
-        if not token:
-            raise ProviderNotConfigured(
-                "Live quotes are not configured. Add UPSTOX_ACCESS_TOKEN to the backend "
-                "environment and restart the API."
-            )
-
-        instrument_keys = [
-            item.strip()
-            for item in settings.UPSTOX_INSTRUMENT_KEYS.split(",")
-            if item.strip()
-        ]
-        if not instrument_keys:
-            raise ProviderNotConfigured(
-                "No Upstox instruments configured. Set UPSTOX_INSTRUMENT_KEYS."
-            )
-
-        headers = {"Accept": "application/json", "Authorization": f"Bearer {token}"}
-        params = {"instrument_key": ",".join(instrument_keys)}
-        try:
-            async with httpx.AsyncClient(timeout=10.0) as client:
-                response = await client.get(self.UPSTOX_QUOTES_URL, headers=headers, params=params)
-                if response.status_code >= 400:
-                    raise self._provider_error(response, "Upstox")
-                payload = response.json()
-        except httpx.RequestError as exc:
-            raise ProviderRequestError("Could not connect to Upstox quote API.") from exc
-        except ValueError as exc:
-            raise ProviderRequestError("Upstox returned invalid quote JSON.") from exc
-
-        raw_quotes = payload.get("data") or {}
-        if not isinstance(raw_quotes, dict) or not raw_quotes:
-            raise ProviderRequestError("Upstox returned no quotes for the configured instruments.")
-
-        quotes = [
-            self.normalize_upstox_quote(key, quote)
-            for key, quote in raw_quotes.items()
-            if isinstance(quote, dict)
-        ]
-        return {
-            "mode": "LIVE",
-            "provider": "Upstox Market Quote API",
-            "transport": "REST snapshot",
-            "fetched_at": datetime.now(timezone.utc).isoformat(),
-            "refresh_seconds": 15,
-            "quotes": quotes,
-        }
 
 
 market_data_service = MarketDataService()

@@ -80,7 +80,6 @@ export default function UserDashboard() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
   const [sources, setSources] = useState(null)
-  const [liveQuotes, setLiveQuotes] = useState(null)
   const [stockSymbol, setStockSymbol] = useState('RELIANCE')
   const [stockExchange, setStockExchange] = useState('NSE')
   const [stockFrom, setStockFrom] = useState('')
@@ -190,24 +189,7 @@ export default function UserDashboard() {
     loadSources()
   }, [])
 
-  useEffect(() => {
-    if (!sources?.live?.configured) return undefined
-    let active = true
-    const refreshQuotes = async () => {
-      try {
-        const response = await marketAPI.getLiveQuotes()
-        if (active) setLiveQuotes(response.data)
-      } catch {
-        if (active) setLiveQuotes(null)
-      }
-    }
-    refreshQuotes()
-    const timer = window.setInterval(refreshQuotes, 15000)
-    return () => {
-      active = false
-      window.clearInterval(timer)
-    }
-  }, [sources?.live?.configured])
+
 
   const stockRows = [...(stockHistory?.data || [])]
     .sort((a, b) => String(b.date || b.trade_date || '').localeCompare(String(a.date || a.trade_date || '')))
@@ -247,7 +229,7 @@ export default function UserDashboard() {
           {[
             ['PRIMARY EOD · EQUITIES', sources?.primary_eod],
             ['EOD ENRICHMENT', sources?.eod_enrichment],
-            ['SECONDARY · LIVE', sources?.live],
+            ['LIVE DATA', sources?.live],
             ['INDEX DIAGNOSIS', sources?.index_diagnosis],
           ].map(([label, source]) => (
             <div key={label} style={{ padding:14, background:'var(--violet-50)', border:'1px solid var(--border)', borderRadius:10 }}>
@@ -256,7 +238,7 @@ export default function UserDashboard() {
                 {source?.provider || 'Checking provider…'}
               </div>
               <div style={{ fontSize:11, marginTop:5, color:source?.configured || source?.status==='ready' ? '#059669' : '#b45309', fontWeight:700 }}>
-                {source?.configured ? 'Configured' : source?.status==='ready' ? 'Ready · no key required' : source?.status==='fallback' ? 'Fallback source' : source?.status==='needs_api_key' ? 'API key required' : source?.status==='needs_credentials' ? 'Credentials required' : 'Status unavailable'}
+                {source?.status==='disabled' ? 'Disabled · provider not selected' : source?.configured ? 'Configured' : source?.status==='ready' ? 'Ready · no key required' : source?.status==='fallback' ? 'Fallback source' : source?.status==='needs_api_key' ? 'API key required' : source?.status==='needs_credentials' ? 'Credentials required' : 'Status unavailable'}
               </div>
               <div style={{ fontSize:11, color:'var(--text-muted)', lineHeight:1.5, marginTop:7 }}>
                 {source?.coverage ? `NSE ${source.coverage.NSE} · BSE ${source.coverage.BSE}` : source?.daily_quota || source?.note || 'Provider metadata loading'}
@@ -265,32 +247,11 @@ export default function UserDashboard() {
           ))}
         </div>
         <div style={{ fontSize:11, color:'var(--text-muted)', marginTop:12, lineHeight:1.5 }}>
-          TejHQ supplies individual-stock EOD candles. BharatStock adds fundamentals on request. Live quotes only activate after Upstox credentials are configured. Current Nifty, Sensex, India VIX and Bank Nifty diagnosis still uses the clearly labelled index fallback.
+          TejHQ supplies individual-stock EOD candles. BharatStock adds fundamentals on request. Intraday/live quotes are intentionally disabled until a replacement provider is selected. Current Nifty, Sensex, India VIX and Bank Nifty diagnosis still uses the clearly labelled index fallback.
         </div>
       </Card>
 
-      {liveQuotes?.quotes?.length > 0 && (
-        <Card style={{ padding:18, marginBottom:20 }}>
-          <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:12 }}>
-            <div style={{ fontSize:11, fontWeight:800, color:'var(--primary)', letterSpacing:'0.08em' }}>LIVE MARKET SNAPSHOT · UPSTOX</div>
-            <div style={{ fontSize:10, color:'var(--text-muted)' }}>Updated {new Date(liveQuotes.fetched_at).toLocaleTimeString('en-IN')}</div>
-          </div>
-          <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit,minmax(150px,1fr))', gap:10 }}>
-            {liveQuotes.quotes.map((quote) => (
-              <div key={quote.instrument_key} style={{ padding:12, border:'1px solid var(--border)', borderRadius:10 }}>
-                <div style={{ fontSize:11, color:'var(--text-muted)', fontWeight:700 }}>{quote.symbol}</div>
-                <div style={{ fontSize:19, fontWeight:800, color:'var(--text)', marginTop:4 }}>
-                  {quote.last_price != null ? `₹${Number(quote.last_price).toLocaleString('en-IN',{maximumFractionDigits:2})}` : '—'}
-                </div>
-                <div style={{ fontSize:12, fontWeight:700, color:quote.change>=0?'#059669':'#dc2626', marginTop:3 }}>
-                  {quote.change_percent != null ? `${quote.change>=0?'+':''}${quote.change} · ${quote.change_percent}%` : '—'}
-                </div>
-              </div>
-            ))}
-          </div>
-          <div style={{ fontSize:10, color:'var(--text-muted)', marginTop:10 }}>Secondary intraday quote feed. It does not replace the EOD diagnosis dataset.</div>
-        </Card>
-      )}
+
 
       {/* TejHQ stock EOD history and optional BharatStock enrichment. */}
       <Card style={{ padding:20, marginBottom:20 }}>
